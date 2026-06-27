@@ -75,10 +75,11 @@ so you can see exactly what's set so far.
 
 ### Block A — base config (required)
 
-Edit the four values at the top; the keys, the node passwords, and the router
-hash are filled in automatically. The two node passwords are **auto-generated**
-random plaintext; the router console password is auto-generated then **hashed**
-(VyOS needs a sha-512 hash, not plaintext).
+Edit the values at the top. SSH is **key-only** on every node; the one password
+you set, `sudo_password`, is the `v2e` user's **sudo** password (not an SSH
+login). The `ansible` automation account has **no password** (locked; reached
+only internally via `sudo su ansible`). The router console password is
+auto-generated then **hashed** (VyOS needs a sha-512 hash, not plaintext).
 
 ```bash
 # Make sure you have an SSH key (creates one if missing)
@@ -89,6 +90,10 @@ PVE_IP=192.168.1.10
 PVE_TOKEN='terraform@pve!iac=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'
 WAN_CIDR='192.168.1.50/24'     # a FREE static IP on your LAN for the VyOS WAN
 WAN_GW='192.168.1.1'           # your LAN gateway (VyOS's route to the internet)
+
+# v2e sudo password (REQUIRED): a strong one is generated; replace with your own if you prefer.
+SUDO_PW=$(openssl rand -base64 12)
+echo "v2e sudo password (SAVE THIS): $SUDO_PW"
 
 # Optional router console password: auto-generate, then hash with sha-512.
 # (Key access already works without it; this is break-glass only.)
@@ -105,19 +110,18 @@ workstation_public_key = "$(cat ~/.ssh/id_ed25519.pub)"
 wan_address = "${WAN_CIDR}"
 wan_gateway = "${WAN_GW}"
 
-cluster_password     = "$(openssl rand -base64 12)"   # v2e admin user (all nodes)
-ansible_password     = "$(openssl rand -base64 12)"   # ansible automation user (all nodes)
-router_password_hash = "${ROUTER_HASH}"               # VyOS bootstrap 'vyos' user
+sudo_password        = "${SUDO_PW}"      # v2e sudo password (SSH is key-only; required)
+router_password_hash = "${ROUTER_HASH}"  # VyOS bootstrap 'vyos' user (optional)
 EOF
 
 chmod 600 terraform.tfvars
 cat terraform.tfvars                                  # review what's set
 ```
 
-> Password mapping (these are the *only* three password variables):
-> `cluster_password` = the `v2e` admin login on all nodes · `ansible_password` =
-> the `ansible` automation login on all nodes · `router_password_hash` = the
-> VyOS bootstrap `vyos` user. There is **no** `agent_password` or
+> Password mapping: `sudo_password` = the `v2e` user's sudo password (**required**;
+> SSH itself is key-only) · `router_password_hash` = the VyOS bootstrap `vyos`
+> user (optional). The `ansible` account has **no** password (locked). There is
+> **no** `cluster_password` / `ansible_password` / `agent_password` /
 > `router_password` — `tofu` rejects unknown names.
 
 ### Block B — Cloudflare SSH tunnel (optional)
@@ -216,6 +220,10 @@ ssh vyos@"$WAN_IP"              # router, by key (bootstrap 'vyos' user; Ansible
 ssh -p 2201 v2e@"$WAN_IP"       # control node, by key (via VyOS DNAT WAN:2201 → control:22)
 ```
 
+> From outside (the WAN port-forward or the Cloudflare tunnel) only **`v2e`** can
+> log in, and by key only — `root` login is disabled and `ansible` is reachable
+> only from inside (`sudo -iu ansible`, or control's mesh).
+
 From **control**, both trust meshes work by key (private keys live only on control):
 
 ```bash
@@ -288,8 +296,10 @@ tofu destroy                                                              # tear
 ## Troubleshooting & hard-won gotchas (don't re-learn these)
 
 - **`Unsupported argument` on apply** → a tfvars key that isn't a real variable.
-  The password vars are exactly `cluster_password`, `ansible_password`,
-  `router_password_hash` (not `agent_password` / `router_password`).
+  The password vars are exactly `sudo_password` and `router_password_hash` (not
+  `cluster_password` / `ansible_password` / `agent_password` / `router_password`).
+- **`sudo_password` is required** → omitting it, or using a known-weak value
+  (`v2e` / `ansible` / `password` / `changeme`), fails validation.
 - **Router password must be a sha-512 hash.** `var.router_password_hash` is fed
   straight to VyOS, so plaintext becomes an unusable console password. Hash with
   **OpenSSL 3.x** `openssl passwd -6` (Homebrew: `brew install openssl`). The
@@ -329,10 +339,14 @@ export TF_ENCRYPTION="$(cat <<EOF
 key_provider "pbkdf2" "main" { passphrase = "$(security find-generic-password -a "$USER" -s tofu-v2e-state -w)" }
 method "aes_gcm" "main" { keys = key_provider.pbkdf2.main }
 method "unencrypted" "migrate" {}
-state { method = method.aes_gcm.main
-        fallback { method = method.unencrypted.migrate } }
-plan  { method = method.aes_gcm.main
-        fallback { method = method.unencrypted.migrate } }
+state {
+  method = method.aes_gcm.main
+  fallback { method = method.unencrypted.migrate }
+}
+plan {
+  method = method.aes_gcm.main
+  fallback { method = method.unencrypted.migrate }
+}
 EOF
 )"
 tofu apply                                   # rewrites state ENCRYPTED
