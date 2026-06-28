@@ -137,6 +137,11 @@ unchanged. Requires the domain already on Cloudflare; the API token needs scopes
 > account** automatically — no orphaned tunnel or stray `lab.example.com` DNS
 > record left behind.
 
+> Optional — gate the public hostname with Cloudflare Access (one-time PIN): set
+> `CLOUDFLARE_ACCESS_EMAIL` below. Reaching `tunnel_hostname` then requires an OTP
+> to an allowed email *before* SSH key auth. Leave it empty for no gate (the tunnel
+> is then reachable with the SSH key alone).
+
 ```bash
 # ---- EDIT THESE ----
 CF_API_TOKEN='cfut_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
@@ -144,6 +149,7 @@ CF_ACCOUNT_ID='xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
 CF_ZONE_ID='xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
 CF_DOMAIN='example.com'        # a zone already on your Cloudflare account
 CF_SUBDOMAIN='lab'             # public host becomes lab.example.com
+CLOUDFLARE_ACCESS_EMAIL=""     # optional OTP gate; set your email, empty = no gate
 
 cat >> terraform.tfvars <<EOF
 
@@ -153,6 +159,9 @@ cloudflare_zone_id    = "${CF_ZONE_ID}"
 tunnel_hostname       = "${CF_SUBDOMAIN}.${CF_DOMAIN}"
 tunnel_dns_name       = "${CF_SUBDOMAIN}"
 EOF
+
+# Append the Access gate only when an email is set (empty -> no gate).
+[ -n "$CLOUDFLARE_ACCESS_EMAIL" ] && echo "cloudflare_access_emails = [\"$CLOUDFLARE_ACCESS_EMAIL\"]" >> terraform.tfvars
 
 chmod 600 terraform.tfvars
 cat terraform.tfvars                                  # review: base + Cloudflare
