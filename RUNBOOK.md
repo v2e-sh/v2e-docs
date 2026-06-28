@@ -277,6 +277,39 @@ tofu output ssh_to_control_via_tunnel
 
 ---
 
+## Firewall (router isolation)
+
+The router runs a **default-deny** firewall. It's **defined in Terraform** and
+applied by cloud-init when the router is built — part of the generated VyOS
+config, not configured by hand.
+
+**Current policy:**
+- **WAN in:** only `control:22` (the DNAT). The router's own SSH is open to the
+  WAN only from `trusted_mgmt_sources` (default: none — reach it via control).
+- **Inside:** `control` (hub) → `services` and `agent`; the spokes can't reach
+  each other or initiate back to `control`; `agent` is fully isolated.
+- **Egress:** any node → internet is open.
+- Return traffic for allowed flows is always permitted (stateful).
+
+**Changing it** — Terraform is the source of truth; cloud-init applies it once at
+router build, so changes take effect on the **next router rebuild**, not live:
+
+- Knobs in `terraform.tfvars`:
+  ```
+  firewall_enabled     = true                 # false disables the whole firewall
+  trusted_mgmt_sources = ["203.0.113.5/32"]   # CIDRs allowed to SSH the router over the WAN
+  ```
+- The rules themselves: the `set firewall ...` block in
+  `cloud-init/vyos-router.yaml.tftpl`.
+- Apply: `tofu apply -replace='proxmox_virtual_environment_vm.vyos'` — keep the
+  Proxmox VM console open; if a rule locks you out, log in as `vyos` and
+  `delete firewall`.
+
+> A live `configure` → `set firewall` edit on the router works but is **wiped on
+> the next rebuild** (and phase-2 Ansible later owns router config).
+
+---
+
 ## Day-2 operations
 
 ```bash
