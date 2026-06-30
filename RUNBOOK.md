@@ -61,65 +61,46 @@ Do these once. They are *not* managed by Terraform.
 
 ## Building the VM templates (`v2e-templates`)
 
-The templates from Step 0 are produced by a separate repo, **`v2e-templates`**, that runs
-**on the Proxmox host** as root — `virt-customize` + `qm`, no Packer, no API token, no build
-network. Each base image is customized *offline* (never booted) and imported with `qm`;
-`qm template` is the artifact Terraform clones.
+A separate repo, **`v2e-templates`**, builds the templates **on the Proxmox host**
+(`virt-customize` + `qm`): each image is customized *offline*, imported, and turned into a
+`qm template` — the artifact Terraform clones.
 
-> Run these **on the PVE host**, not your mac — they need local `qm` and
-> `libguestfs-tools` (`virt-customize`): `apt install libguestfs-tools`. Disks land on a
-> storage with a cloud-init-capable backend (`local-lvm`).
+> Run on the **PVE host**, not your mac: needs `qm` + `libguestfs-tools`
+> (`apt install libguestfs-tools`) and a cloud-init-capable storage (`local-lvm`).
 
-Per OS: fetch the official image by **pinned URL + SHA256**, then `virt-customize` offline
-(install `qemu-guest-agent`, copy in **sops** + **age**, pin the NoCloud cloud-init
-datasource, seal machine-id + host keys) → `qm` import + cloud-init drive → `qm template`.
-Builds target the **staging** range `9900-9903` so they never clobber an in-use
-`9000-9003`; you promote once verified.
+Per OS: fetch the official image (pinned URL + SHA256) → `virt-customize` offline
+(`qemu-guest-agent`, `sops` + `age`, NoCloud datasource, seal machine-id + host keys) → `qm`
+import + cloud-init drive → `qm template`.
 
 ```bash
 # On the PVE host:
-git clone https://github.com/v2e-sh/v2e-templates.git
-cd v2e-templates
-
-# Edit config.env: STORAGE, BRIDGE, the per-image *_VMID, and (to change versions) the
-# image *_URL + *_SHA256. Defaults: STORAGE=local-lvm, BRIDGE=vmbr0.
-$EDITOR config.env
-
-make ubuntu debian        # official cloud images, ~2 min each (Parrot is optional: make parrot)
+git clone https://github.com/v2e-sh/v2e-templates.git && cd v2e-templates
+$EDITOR config.env          # STORAGE, BRIDGE, per-image *_VMID, image *_URL/*_SHA256
+make ubuntu debian          # cloud images, ~2 min each (Parrot optional: make parrot)
 ```
 
 ### VyOS — pick one path
 
-VyOS has no upstream cloud image, so it's special — it is built, not fetched-as-is:
+VyOS has no upstream cloud image:
 
 ```bash
-# A) Trust-me (fast): config.env's VYOS_URL already points at a published qcow2 release
-#    (+ VYOS_SHA256). build-vyos.sh downloads + checksum-verifies, then templates it.
+# A) fetch the published qcow2 (VYOS_URL + VYOS_SHA256 already set in config.env):
 make vyos
-
-# B) DIY (reproducible, ~20-40 min): build rolling FROM SOURCE in a throwaway Debian
-#    builder VM — it clones the Debian template, runs vyos-build in Docker, copies the
-#    qcow2 back, and self-destructs (zero host pollution). Then import it.
-make vyos-build           # writes $IMG_CACHE/vyos-current.qcow2 (+ prints its sha256)
-make vyos
+# B) or build rolling from source in a throwaway Debian builder VM (~20-40 min), then import:
+make vyos-build && make vyos
 ```
 
-> Path B needs internet through the host NAT — set `VYOS_BUILDER_IP` / `BUILD_GW` in
-> `config.env` to a free IP on `BRIDGE` and a gateway that routes out. It clones the
-> **Debian** template, so `make debian` first.
+> Path B clones the **Debian** template (`make debian` first) and needs internet via the host
+> NAT — set `VYOS_BUILDER_IP` / `BUILD_GW` in `config.env`.
 
-> Only the **nodes** get `sops` + `age` baked in; **VyOS gets neither** — the router needs
-> no secrets tooling.
+> Nodes get `sops` + `age` baked in; **VyOS gets neither**.
 
 ### Staging → production
 
-The build lands at the staging IDs `9900-9903`; Terraform wants `9000-9003`. Pick one:
-
-- **Point Terraform at staging** — set `ubuntu_template_id = 9901` (and `debian_…` / `vyos_…`)
-  in `terraform.tfvars`.
-- **Build at the prod IDs** — edit the `*_VMID` values in `config.env` to `9000-9003`, then
-  re-run `make`. VMIDs are read from `config.env`, so a `VMID=…` on the command line is **not**
-  honored (each `build-*.sh` re-sources `config.env`).
+Builds land at staging `9900-9903`; Terraform wants `9000-9003`. Either set
+`ubuntu_template_id = 9901` (etc.) in `terraform.tfvars`, or edit the `*_VMID` in `config.env`
+to the prod IDs and re-run `make`. A CLI `VMID=…` is ignored — each `build-*.sh` re-sources
+`config.env`.
 
 ### Verify before promoting
 
@@ -127,13 +108,12 @@ The build lands at the staging IDs `9900-9903`; Terraform wants `9000-9003`. Pic
 qm clone 9901 9950 --name verify
 qm set 9950 --ipconfig0 ip=10.0.0.50/24,gw=10.0.0.1 --ciuser test --cipassword test
 qm start 9950
-qm guest exec 9950 -- cloud-init status     # -> done; ip is 10.0.0.50; sops + age present
+qm guest exec 9950 -- cloud-init status     # done; ip 10.0.0.50; sops + age present
 qm stop 9950 && qm destroy 9950 --purge
 ```
 
-> Image URLs are **SHA256-pinned**. When upstream ships a newer point release the checksum
-> fails loudly — update the matching `*_SHA256` in `config.env` (or pin a dated URL) to
-> refresh. This is a feature: no silent base-image drift between builds.
+> Image URLs are SHA256-pinned: an upstream point-release bump fails the checksum — update the
+> matching `*_SHA256` in `config.env`.
 
 ---
 
