@@ -426,6 +426,28 @@ tofu destroy                                                              # tear
   stray `# comments` or stacked `ssh` lines.
 - **The cluster private keys are embedded** in control's cloud-init drive
   (unavoidable for this pattern) — treat that VM's disk/snapshots accordingly.
+- **Teardown hangs on `Still destroying… [id=3xx]`** → on destroy bpg does a
+  *graceful* shutdown and waits on the guest agent (`guest-ping`); if the agent
+  isn't running it blocks up to `timeout_shutdown_vm` (~30 min). The VMs set
+  `stop_on_destroy = true` (hard `qm stop`) to avoid this. If one still wedges,
+  force it on the PVE host: `qm stop <id> --skiplock && qm destroy <id> --purge
+  --skiplock` (then `tofu state rm` it if Terraform still tracks it).
+- **`plan` / `apply` stuck on `Refreshing… [id=3xx]`** → `agent { enabled = true }`
+  makes the provider read each node's agent during refresh; an unresponsive agent
+  hangs for minutes. Skip it with `tofu plan -refresh=false` (diffs against state,
+  no guest reads) — also the way to plan after a VM was deleted out-of-band.
+- **First-boot apt upgrade is OFF by default** (`package_upgrade = false`). The
+  upgrade is slow and can OOM a desktop-class control, killing its agent (after
+  which the apply blocks on the agent). Ansible owns patching; set `true` only to
+  patch *before* the bootstrap runs.
+- **`error cloning VM: unable to find configuration file for VM 9000`** → that
+  template VMID doesn't exist on the node. Build it (`v2e-templates`) or point
+  `vyos_/ubuntu_/debian_template_id` at the IDs you actually have (staging
+  `9900-9903` vs prod `9000-9003`).
+- **Cloudflare `404 Tunnel not found` on apply** → the tunnel recorded in state was
+  deleted out-of-band (or left half-applied), so its ingress config can't be PUT.
+  Reconcile: `tofu state rm` the `cloudflare_*` resources, then re-apply (it
+  recreates the tunnel + CNAME).
 
 ---
 
