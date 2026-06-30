@@ -111,14 +111,15 @@ make vyos
 > Only the **nodes** get `sops` + `age` baked in; **VyOS gets neither** — the router needs
 > no secrets tooling.
 
-### Promote staging → production
+### Staging → production
 
-The build lands at `9900-9903`; Terraform wants `9000-9003`. Either point the
-`*_template_id` vars at the staging IDs, or build straight to the prod VMID:
+The build lands at the staging IDs `9900-9903`; Terraform wants `9000-9003`. Pick one:
 
-```bash
-VMID=9001 bash build-ubuntu.sh        # build Ubuntu directly as 9001
-```
+- **Point Terraform at staging** — set `ubuntu_template_id = 9901` (and `debian_…` / `vyos_…`)
+  in `terraform.tfvars`.
+- **Build at the prod IDs** — edit the `*_VMID` values in `config.env` to `9000-9003`, then
+  re-run `make`. VMIDs are read from `config.env`, so a `VMID=…` on the command line is **not**
+  honored (each `build-*.sh` re-sources `config.env`).
 
 ### Verify before promoting
 
