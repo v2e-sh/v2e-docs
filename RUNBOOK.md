@@ -33,10 +33,12 @@ Do these once. They are *not* managed by Terraform.
 
 1. **Templates exist:** VyOS `9000`, Ubuntu `9001`, Debian `9002` (the VMIDs are
    configurable — see `vyos_template_id` / `ubuntu_template_id` / `debian_template_id`).
-   - VyOS **must** be a cloud-init-*built* qcow2 — build one with
-     [vyos-build](https://github.com/vyos/vyos-build). The free nightly ISO has no
+   Build them with the **`v2e-templates`** repo — see [Building the VM
+   templates](#building-the-vm-templates-v2e-templates) below.
+   - VyOS **must** be a cloud-init-*built* qcow2; the free nightly ISO has no
      cloud-init and will silently ignore your config.
-   - Ubuntu/Debian: the upstream `genericcloud` qcow2 images work as-is.
+   - Ubuntu/Debian come from official cloud images (already cloud-init ready); the
+     build bakes in `qemu-guest-agent` + `sops`/`age`.
 
 2. **Enable the `snippets` content type** on the `local` datastore (cloud-init
    user-data is uploaded there via SSH):
@@ -54,6 +56,83 @@ Do these once. They are *not* managed by Terraform.
    ssh root@192.168.1.10 true      # your PVE host — must return with no prompt
    ssh-add -l                      # your key must be loaded in the agent (provider uses agent=true)
    ```
+
+---
+
+## Building the VM templates (`v2e-templates`)
+
+The templates from Step 0 are produced by a separate repo, **`v2e-templates`**, that runs
+**on the Proxmox host** as root — `virt-customize` + `qm`, no Packer, no API token, no build
+network. Each base image is customized *offline* (never booted) and imported with `qm`;
+`qm template` is the artifact Terraform clones.
+
+> Run these **on the PVE host**, not your mac — they need local `qm` and
+> `libguestfs-tools` (`virt-customize`): `apt install libguestfs-tools`. Disks land on a
+> storage with a cloud-init-capable backend (`local-lvm`).
+
+Per OS: fetch the official image by **pinned URL + SHA256**, then `virt-customize` offline
+(install `qemu-guest-agent`, copy in **sops** + **age**, pin the NoCloud cloud-init
+datasource, seal machine-id + host keys) → `qm` import + cloud-init drive → `qm template`.
+Builds target the **staging** range `9900-9903` so they never clobber an in-use
+`9000-9003`; you promote once verified.
+
+```bash
+# On the PVE host:
+git clone https://github.com/v2e-sh/v2e-templates.git
+cd v2e-templates
+
+# Edit config.env: STORAGE, BRIDGE, the per-image *_VMID, and (to change versions) the
+# image *_URL + *_SHA256. Defaults: STORAGE=local-lvm, BRIDGE=vmbr0.
+$EDITOR config.env
+
+make ubuntu debian        # official cloud images, ~2 min each (Parrot is optional: make parrot)
+```
+
+### VyOS — pick one path
+
+VyOS has no upstream cloud image, so it's special — it is built, not fetched-as-is:
+
+```bash
+# A) Trust-me (fast): config.env's VYOS_URL already points at a published qcow2 release
+#    (+ VYOS_SHA256). build-vyos.sh downloads + checksum-verifies, then templates it.
+make vyos
+
+# B) DIY (reproducible, ~20-40 min): build rolling FROM SOURCE in a throwaway Debian
+#    builder VM — it clones the Debian template, runs vyos-build in Docker, copies the
+#    qcow2 back, and self-destructs (zero host pollution). Then import it.
+make vyos-build           # writes $IMG_CACHE/vyos-current.qcow2 (+ prints its sha256)
+make vyos
+```
+
+> Path B needs internet through the host NAT — set `VYOS_BUILDER_IP` / `BUILD_GW` in
+> `config.env` to a free IP on `BRIDGE` and a gateway that routes out. It clones the
+> **Debian** template, so `make debian` first.
+
+> Only the **nodes** get `sops` + `age` baked in; **VyOS gets neither** — the router needs
+> no secrets tooling.
+
+### Promote staging → production
+
+The build lands at `9900-9903`; Terraform wants `9000-9003`. Either point the
+`*_template_id` vars at the staging IDs, or build straight to the prod VMID:
+
+```bash
+VMID=9001 bash build-ubuntu.sh        # build Ubuntu directly as 9001
+```
+
+### Verify before promoting
+
+```bash
+qm clone 9901 9950 --name verify
+qm set 9950 --ipconfig0 ip=10.0.0.50/24,gw=10.0.0.1 --ciuser test --cipassword test
+qm start 9950
+qm guest exec 9950 -- cloud-init status     # -> done; ip is 10.0.0.50; sops + age present
+qm stop 9950 && qm destroy 9950 --purge
+```
+
+> Image URLs are **SHA256-pinned**. When upstream ships a newer point release the checksum
+> fails loudly — update the matching `*_SHA256` in `config.env` (or pin a dated URL) to
+> refresh. This is a feature: no silent base-image drift between builds.
 
 ---
 
