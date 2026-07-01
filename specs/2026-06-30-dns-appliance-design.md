@@ -158,6 +158,40 @@ node scope) should include the DNS node's reachability.
 
 ---
 
+## 12. Implementation decisions (resolved during planning, 2026-07-01)
+
+Resolved against the actual repo state before implementation. Three PRs land in order
+`v2e-tf` → `v2e-ansible` → `v2e-compose` (each repo has a require-PR ruleset on `main`).
+
+1. **Client pointing = DHCP option 6 only.** The server nodes take static DNS
+   (`1.1.1.1/9.9.9.9`) from cloud-init, which overrides DHCP, and there is no VyOS DHCP
+   server today. Add a VyOS DHCP server handing `option 6 = 10.1.0.53` to the node VLANs
+   (the spec item, and the "one place" for future lab-attached clients) but **do not**
+   repoint the static server nodes — that avoids a first-boot / ACME chicken-and-egg on the
+   DNS node. Remote browsing stays on Tailscale (ANS-4). `dig @10.1.0.53` satisfies
+   acceptance regardless of DHCP.
+2. **TF per-node overrides (wrinkle).** All nodes currently share global `node_cores/
+   node_memory/node_disk_size` and one `node_host_octet` (which would place `dns` at
+   `10.1.0.10`). Extend the `local.nodes` schema with *optional* per-node `host_octet`,
+   `cores`, `memory`, `disk` that fall back to the existing globals, so `dns` gets
+   `host_octet=53` + `1 vCPU / 512 MB / 8 GB` while control/services/agent stay
+   byte-identical to today.
+3. **Technitium install = official `install.sh`**, guarded by a `creates`/systemd status
+   check for idempotence; API configured idempotently with `ansible.builtin.uri`
+   (GET-before-POST), admin password bootstrapped off the default and stored in SOPS
+   (`group_vars/dns/secrets.sops.yaml`) — matching the master-plan SOPS direction.
+4. **Compose external backend = Traefik file provider.** `dns.${INTERNAL_DOMAIN}` routes to
+   the non-container console at `10.1.0.53:5380` via a file-provider dynamic config, since
+   Traefik currently runs the docker provider only.
+5. **File-provider env substitution (wrinkle).** Traefik's file provider does not expand env
+   vars, so a static dynamic file would hardcode the internal domain and break the
+   single-`INTERNAL_DOMAIN`-variable contract. Keep `traefik/dynamic/dns.yml.tmpl` and have
+   the Makefile `envsubst` it to `dns.yml` (using `INTERNAL_DOMAIN` + `DNS_ADMIN_ADDR`)
+   before `up`/`prod`. The router references `auth@docker` + `secure-headers@docker`
+   cross-provider.
+
+---
+
 ## 11. Sources
 
 - Technitium DNS Server — native install + HTTP API + authoritative zones/forwarders/logging;
