@@ -26,7 +26,7 @@ A self-hosted DevOps lab on a single Proxmox host, reachable from anywhere, wher
 agents can run it. Built as code across five repos and a four-layer stack:
 
 ```
-Packer (image)      → reproducible base templates (VyOS, Ubuntu, Debian, Parrot)
+Templates (image)   → reproducible base templates (VyOS, Ubuntu, Debian, Parrot)
    ↓
 Terraform (infra)   → VMs, networking, bootstrap identity (v2e + ansible users)
    ↓
@@ -35,14 +35,15 @@ Ansible (config)    → health checks, hardening, Docker, services
 Compose (apps)      → Traefik + TLS, auth, Semaphore, Dockge, monitoring
 ```
 
-**Repos:** `v2e-packer` (images), `v2e-tf` (OpenTofu/HCL), `v2e-ansible` (config),
-`v2e-compose` (stacks), `v2e-docs` (runbooks).
+**Repos:** `v2e-templates` (images — host-side `virt-customize`/`qm`, not Packer),
+`v2e-tf` (OpenTofu/HCL), `v2e-ansible` (config), `v2e-compose` (stacks),
+`v2e-docs` (runbooks).
 
 ---
 
 ## 1. Locked decisions
 
-- **Division of labour.** Packer = base images. Terraform = infra + bootstrap identity
+- **Division of labour.** `v2e-templates` = base images. Terraform = infra + bootstrap identity
   only (`v2e`/`ansible` users, router's `vyos` user). Ansible = everything after.
 - **Full automation.** `terraform apply` → control's cloud-init clones `v2e-ansible`
   `main` → `ansible-playbook site.yml` → health checks → config. One lever.
@@ -105,13 +106,23 @@ Compose (apps)      → Traefik + TLS, auth, Semaphore, Dockge, monitoring
 local machine:                         Terraform:                control cloud-init:               Ansible / Compose (first boot):
   age-keygen → keys.txt (private)  ┌─►  sops_age_key_file   ─►  write ~/.config/sops/age/keys.txt   age private key decrypts:
   sops --encrypt secrets.sops.yaml │    (age private key)        (0600, ansible-owned)               • Ansible: community.sops vars plugin
-  (encrypted to age PUBLIC key)    └─►  sops_secrets_file    ─►  write group_vars/all.yml (0600)      • Compose: sops exec-env '… up -d'
-                                        (encrypted file)                                              • Terraform (if needed): carlpett/sops
+  (encrypted to age PUBLIC key)    └─►  sops_secrets_file    ─►  write group_vars/all.sops.yaml       • Compose: ANS-3 renders .env (env.j2)
+                                        (encrypted file)             (0600; .sops.yaml ext required)     • Terraform (if needed): carlpett/sops
 ```
+
+> **`.sops.yaml` extension is load-bearing.** The `community.sops` vars plugin only
+> auto-decrypts `*.sops.yaml/.yml/.json`; a plain `all.yml` is loaded as raw ciphertext
+> (silent failure). Cloud-init lands the file as `group_vars/all.sops.yaml`.
+>
+> **Compose consumption (as implemented in ANS-3):** rather than `sops exec-env` on the
+> services node, the `compose_stack` role reads the decrypted vars on control and renders a
+> root-owned `.env` (`env.j2`) that `docker_compose_v2` feeds via `--env-file`. Secret keys
+> are **lowercase** in the SOPS file (`cf_dns_api_token`, `tinyauth_auth_users`); env.j2 maps
+> them to the `CF_DNS_API_TOKEN`/`TINYAUTH_AUTH_USERS` env vars the stacks expect.
 
 - **Asymmetric, no password.** The age public key encrypts; the private key decrypts.
   User keeps the private key safe and passes it to Terraform like any credential.
-- `sops`/`age` binaries are baked into the Packer image (D-5) so they exist before
+- `sops`/`age` binaries are baked into the template image (D-5) so they exist before
   Ansible runs.
 - **Multiple recipients allowed** — the user's key and a backup/CI key can both decrypt
   the same file (resilience; lets CI validate).
@@ -128,7 +139,7 @@ local machine:                         Terraform:                control cloud-i
 ## 4. Execution order
 
 ```
-Phase 0/E (Packer) ─────────────────────────────────┐ feeds templates
+Phase 0/E (Templates) ───────────────────────────────┐ feeds templates
   VyOS-src · Ubuntu · Debian · Parrot                │ bakes: agent, sops+age
                                                      ▼
                                         TF-1 ──► TF-2 (SOPS) ──► TF-3
@@ -155,13 +166,18 @@ DOCS-1/2: parallel; finalize last
 
 > Legend: `[ ]` not started · `[~]` in progress · `[x]` merged to main.
 
-### `[x]` Phase 0/E — Packer templates
+### `[x]` Phase 0/E — VM templates
 
-**Branch:** `feat/packer-templates` · **Repo:** `v2e-packer` (new) · **Upstream of:** TF-1
+**Branch:** `feat/packer-templates` · **Repo:** `v2e-templates` · **Upstream of:** TF-1
 
-**Goal:** reproducible, shareable Proxmox templates as code. Packer files are ~50–100
-lines of HCL — point at an ISO URL, run provisioners, output a template. Far easier to
-share/version than a built image.
+> **Implemented note (reconciled 2026-07-01):** built as **`v2e-templates`**, host-side
+> (`virt-customize` + `qm`), **not Packer**. Each official cloud image is customized
+> offline → imported → `qm template`; VyOS is fetched (pinned qcow2) or source-built in a
+> throwaway VM. The bake/boot/config split (D-5) and the acceptance criteria below still
+> hold; the BSL caveat is moot (no Packer). The kickoff prompt below is historical.
+
+**Goal:** reproducible, shareable Proxmox templates as code — point at a pinned image URL,
+customize offline, output a template. Far easier to share/version than a built image.
 
 **Scope:** four images — VyOS LTS built from source, Ubuntu Server LTS, lightweight
 Debian, Parrot OS. Bake: `qemu-guest-agent`, `sops` + `age`, cloud-init, baseline
@@ -222,8 +238,9 @@ reaches the router; a special-char password no longer corrupts cloud-init.
 
 **Tasks:** add `sops_secrets_file` (path to a locally sops-encrypted file) and
 `sops_age_key_file` (path to the age private key); blank = feature off. In control's
-cloud-init: write the encrypted file to `group_vars/all.yml` (0600, `ansible:ansible`)
-and the age key to `~/.config/sops/age/keys.txt` (0600, ansible-owned). Document the user
+cloud-init: write the encrypted file to `group_vars/all.sops.yaml` (0600, `ansible:ansible`;
+the `.sops.yaml` extension is required for community.sops auto-decryption) and the age key to
+`~/.config/sops/age/keys.txt` (0600, ansible-owned). Document the user
 workflow: `age-keygen`, `sops --encrypt`, pass both paths in `terraform.tfvars`.
 
 **Acceptance:** a test SOPS file round-trips — present + decryptable on control via the
@@ -233,7 +250,7 @@ baked binaries; blank var = byte-identical to TF-1.
 
 > `v2e-tf`, branch `feat/tf-sops-secrets`. Implement TF-2 from the v2e master plan: add
 > `sops_secrets_file` + `sops_age_key_file` variables; cloud-init writes the encrypted
-> file to `group_vars/all.yml` and the age key to `~/.config/sops/age/keys.txt` (both
+> file to `group_vars/all.sops.yaml` and the age key to `~/.config/sops/age/keys.txt` (both
 > 0600, ansible-owned); gate blank=off; document the encrypt-and-supply workflow. Confirm
 > `community.sops` decrypts on first boot.
 
@@ -269,7 +286,15 @@ hangs apply.
 
 ---
 
-### `[ ]` ANS-1 — Structure + skeleton
+### `[~]` ANS-1 — Structure + skeleton
+
+> **Status (2026-07-01):** ANS-1/2/3 are all **implemented on the local branch
+> `feat/ansible-services-docker`** (site.yml imports 01/02/03; requirements + ansible.cfg +
+> inventory; health_check/dev_tools/compose_stack/ai_identities roles; migration map applied
+> — killswitch + vyos-hardening kept as standalone tag-gated ops playbooks). ⚠️ **None are
+> merged/pushed to `main`. `origin/main` is still the pre-ANS skeleton (`ping → baseline →
+> patch → docker`, `hosts: all`) — and that is exactly what control's cloud-init clones.**
+> These must be consolidated onto `main` before a first full-stack run.
 
 **Branch:** `refactor/ansible-structure` · **Repo:** `v2e-ansible` · **Depends on:** TF-1
 
@@ -284,7 +309,7 @@ Scaffold `health_check` and `dev-tools` roles.
 
 | Current role | Disposition in new structure |
 |---|---|
-| `baseline` | Folded into `01-bootstrap` (drop `qemu-guest-agent` install — now baked by Packer). |
+| `baseline` | Folded into `01-bootstrap` (drop `qemu-guest-agent` install — now baked by `v2e-templates`). |
 | `deb-hardening-basic` | **Replaced** by `devsec.hardening` in `01-bootstrap` (retire the cloud-init `60-v2e.conf` drop-in). |
 | `docker` (vendored geerlingguy) | **Replaced** by pinned `geerlingguy.docker` in `02-services` (ANS-3). |
 | `patch` | Kept as a **standalone tag-gated** operational playbook (`--tags patch`); reboot policy per Q2. |
@@ -310,7 +335,11 @@ the restructure.
 
 ---
 
-### `[ ]` ANS-2 — Bootstrap playbook
+### `[~]` ANS-2 — Bootstrap playbook
+
+> **Status (2026-07-01):** implemented on `feat/ansible-services-docker` (health_check is a
+> real fail-fast gate; devsec.hardening with `sftp_enabled`/`ip_forward=1` preserved;
+> dev_tools). Not on `main` — see ANS-1 status.
 
 **Branch:** `feat/ansible-bootstrap` · **Depends on:** ANS-1
 
@@ -339,7 +368,14 @@ copy files (SFTP) and a container still reaches another container + the internet
 
 ---
 
-### `[ ]` ANS-3 — Services: Docker + compose deploy
+### `[~]` ANS-3 — Services: Docker + compose deploy
+
+> **Status (2026-07-01):** implemented on `feat/ansible-services-docker` — geerlingguy.docker
+> + a `compose_stack` role that clones v2e-compose, creates the `frontend` network, renders a
+> root-owned `.env`, and deploys traefik/tinyauth/whoami via `docker_compose_v2`. Secrets
+> (`cf_dns_api_token`, `tinyauth_auth_users`) come from the SOPS `group_vars/all.sops.yaml`.
+> **Deviation from plan:** it renders a `.env` via `env.j2` + `--env-file` rather than
+> `sops exec-env` (the age key lives only on control). Not on `main` — see ANS-1 status.
 
 **Branch:** `feat/ansible-services-docker` · **Depends on:** ANS-2 and COMPOSE-1
 
@@ -600,14 +636,24 @@ bake/boot/config split reference.
 
 ---
 
-### `[ ]` Phase F — CI/quality (cross-cutting, starts at Phase 0)
+### `[~]` Phase F — CI/quality (cross-cutting, starts at Phase 0)
+
+> **Status (2026-07-01):** implemented on `feat/ci-quality` across the four code repos
+> → **PRs** v2e-tf #7, v2e-ansible #3, v2e-compose #4, v2e-templates #2 (CI green).
+> Reconciled tool choices: **Renovate** confirmed (replaces the interim Dependabot
+> configs — Galaxy/tofu/Docker/Actions, grouped non-major); **gitleaks added *alongside*
+> TruffleHog** (defense in depth, both blocking; `.gitleaks.toml` allowlists `*.example`);
+> **Checkov + Trivy + tflint** wired (advisory); **pre-commit** config in every repo.
+> **Pending:** (1) install the **Renovate GitHub App** on the org — inert until then;
+> (2) merge the four PRs; (3) Hadolint deferred to Phase H (no Dockerfiles yet).
 
 **Branch:** `feat/ci-quality` · **Repos:** all
 
 **Tasks:** pre-commit in every repo: `tofu fmt`, `tflint`, `yamllint`, `ansible-lint`,
 ShellCheck, Hadolint, gitleaks. GitHub Actions mirroring those + Trivy + Checkov. Renovate
-across repos (Galaxy roles, OpenTofu providers, Docker tags, Action versions). (SOPS is
-core, not part of F.)
+across repos (Galaxy roles, OpenTofu providers, Docker tags, Action versions). Secret
+scanning runs **gitleaks + TruffleHog** together (pattern + verified). (SOPS is core, not
+part of F.)
 
 **Kickoff prompt**
 
@@ -757,6 +803,15 @@ Redis→SSPL/AGPL (2024–25), and Tailscale's closed control plane.
 
 ## 10. Consolidation changelog
 
+- **2026-07-01** — Doc-drift reconciliation after a full-stack connectivity review: renamed
+  the image layer from **Packer/`v2e-packer`** to **`v2e-templates`** (host-side
+  `virt-customize`/`qm`) throughout §0/§1/§3/§4/§5; marked **ANS-1/2/3 `[~]`** (implemented
+  on `feat/ansible-services-docker`, **not yet on `main`** — the deploy clones `origin/main`,
+  still the pre-ANS skeleton); corrected §3 to the implemented secrets path (SOPS file lands
+  as `group_vars/all.sops.yaml` — the `.sops.yaml` extension is required for auto-decryption;
+  Compose is fed a rendered `.env`, not `sops exec-env`; secret keys are lowercase). Fixes
+  landed alongside: v2e-tf cloud-init now writes `all.sops.yaml`; RUNBOOK.md rewritten as a
+  full-stack guide with the corrected secret contract.
 - **2026-06-30** — Consolidated the roadmap, tooling audit, and integration analysis into
   this single document. Added **ANS-6** (agent-action audit logging); added the
   existing-role **migration map** to ANS-1 and explicitly re-homed the `killswitch` /
