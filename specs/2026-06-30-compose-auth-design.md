@@ -4,7 +4,17 @@
 **Phase:** COMPOSE-2 — see `MASTER-PLAN.md` §5
 **Branch:** `feat/compose-auth` · **Integration:** feature branch → **PR** (the `main` ruleset requires PRs)
 **Repo:** `v2e-compose` · **Depends on:** COMPOSE-1 (merged) · **Followed by:** COMPOSE-3 (Semaphore + Dockge)
-**Status:** design approved — ready for implementation planning (writing-plans).
+**Status:** design approved — implemented; **corrected post-review** (see banner).
+
+---
+
+> **Correction (post-final-review, 2026-06-30):** `TINYAUTH_SECRET` was **removed** — it is
+> not a TinyAuth **v5** variable. v5 auto-manages the session-signing key and stores sessions
+> in a DB (`TINYAUTH_DATABASE_PATH`), so the minimal env is `TINYAUTH_APPURL` +
+> `TINYAUTH_AUTH_USERS` only. All `TINYAUTH_SECRET` mentions in §2/§7/§8 below are **superseded**
+> (removed in commit `2de2637`). Consequence: v5 is not strictly "stateless" — the Q3
+> "stateless cookie" wording is approximate; mount a volume for the session DB if session
+> persistence across container recreation matters (backlog).
 
 ---
 

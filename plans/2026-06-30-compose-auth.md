@@ -12,6 +12,11 @@
 
 **Environment note:** Docker is NOT available in the implementation environment. Per-file verification uses `ruby -ryaml` (YAML parse) + `grep` on the raw files + `make -n`. The `docker compose config` schema check and the live auth flow run in CI / on a Docker host.
 
+> **Correction (post-final-review):** `TINYAUTH_SECRET` is **not** a TinyAuth v5 variable and
+> was removed from the shipped stack (commit `2de2637`) — v5 auto-manages the session key. The
+> `TINYAUTH_SECRET` references in the Global Constraints and Tasks 1/2/5 below are **superseded**;
+> the valid v5 env is `TINYAUTH_APPURL` + `TINYAUTH_AUTH_USERS` only.
+
 ## Global Constraints
 
 - **Repo / branch:** `v2e-compose`, branch `feat/compose-auth`. Lands via **PR** (the `main` ruleset requires PRs) — do NOT merge to `main` locally.
