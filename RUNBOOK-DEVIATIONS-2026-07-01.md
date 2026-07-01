@@ -298,9 +298,12 @@ ansible_repo_ref = "main"        # or a feature branch during bring-up; blank = 
 This let us iterate on a branch, verify convergence, then consolidate to `main`. The
 consolidated `main` now contains the full phased `site.yml`.
 
-## 4.2 OPEN ISSUE — `compose_stack` SOPS assert fails in the unattended multi-phase run
+## 4.2 RESOLVED — `compose_stack` SOPS assert fails in the unattended multi-phase run
 
-**FLAG PROMINENTLY. This is the one thing still not green.**
+**Resolved same day** — the extra-vars fix below is implemented in v2e-tf `main`
+(cloud-init decrypts to `~/.v2e-secrets.yml` and appends `-e @$HOME/.v2e-secrets.yml` to
+the `ansible-playbook` invocation) and validated live: the full stack deployed and the
+assert passed. Kept for the record:
 
 **Runbook says:** Step 3 / Appendix E treat the SOPS secrets as a solved problem — if
 `cf_dns_api_token` and `tinyauth_auth_users` are present (lowercase) and `sops -d`
@@ -346,8 +349,55 @@ sudo -iu ansible bash -lc '
   ansible-playbook -i inventory/hosts.ini site.yml -e @/dev/shm/secrets.decrypted.yml ;
   shred -u /dev/shm/secrets.decrypted.yml'
 ```
-Wiring this into control's first boot (decrypt → `-e @…` → shred) is the remaining work
-to make the app stack come up fully unattended.
+Wiring this into control's first boot (decrypt → `-e @…`) shipped in v2e-tf `main`
+(`cloud-init/node.yaml.tftpl`).
+
+---
+
+## 4.3 Traefik never obtains the wildcard cert — the lab's WAN path intercepts `:53`
+
+**Runbook says:** with the DNS-01 token in the SOPS file, Traefik obtains the staging
+wildcard cert on first boot (Step 6 check 5); Appendix E points at token scope or egress
+if it doesn't.
+
+**What happened:** every issuance attempt failed, in two distinct ways that together
+took most of a day to untangle:
+
+1. **Not the token.** The reused tunnel-scoped token creates
+   `_acme-challenge.v2e.sh` TXT records that appear on **both authoritative NS and
+   1.1.1.1 within ~10 s** (verified with a live probe). A dedicated DNS-01 token is
+   least-privilege hygiene, not a functional requirement.
+2. **The lab's WAN path runs a caching transparent DNS interceptor.** Queries from the
+   services node to `sergi.ns.cloudflare.com` are answered by a recursive cache
+   (`rd ra`, no `aa` flag), not the real authoritative server. Verified live from two
+   vantage points at once: the mac watched both real authoritative NS **serve the ACME
+   TXT** for the full window while the services node got **NXDOMAIN from "sergi"** the
+   entire time.
+3. **Every attempt self-poisons.** lego's zone lookup queries `_acme-challenge.v2e.sh`
+   ~1 s *before* creating the TXT; the interceptor negative-caches that NXDOMAIN for the
+   SOA min TTL (**1800 s**), so every subsequent on-node propagation check — whatever
+   resolver it uses — is poisoned. Local checks can *never* pass on this network.
+4. The original config compounded it (`resolvers=1.1.1.1` pin → same negative-cache
+   trap), and a plain `disablePropagationCheck` swap raced Let's Encrypt's validation
+   (~8 s) against the ~10 s API→authoritative propagation.
+
+**The fix (v2e-compose `main`, `traefik/compose.yml`):** skip local checks entirely and
+enforce a fixed wait — lego sleeps, then hands straight to the ACME server, which
+validates from *its* resolvers (unaffected by lab DNS):
+
+```yaml
+- --certificatesResolvers.staging.acme.dnsChallenge.propagation.delayBeforeChecks=60s
+- --certificatesResolvers.staging.acme.dnsChallenge.propagation.disableChecks=true
+```
+
+lego v5 logs the intended behavior explicitly: *"the active propagation check is
+disabled, waiting for the propagation instead (wait=60000)"* — then:
+`Certificates obtained for domains [v2e.sh *.v2e.sh]` (staging CA, wildcard SAN).
+
+> **Infra follow-up:** find and fix whatever intercepts UDP/53 on the
+> `services → VyOS → PVE-NAT → home-LAN` path (PVE `dnsmasq`? router DNS hijack?).
+> The DNS-1 phase (internal Technitium resolver) changes lab DNS anyway — fold the
+> investigation in there.
 
 ---
 
@@ -360,10 +410,12 @@ to make the app stack come up fully unattended.
 | Cloudflare tunnel | **Active** (best-effort install held up) |
 | Docker on services | **Installed** (geerlingguy.docker) |
 | SSH-over-router (jump host) | **Works** (3.1) |
-| App containers (traefik / tinyauth / whoami) | **BLOCKED** on the `compose_stack` SOPS extra-vars fix (4.2) |
+| App containers (traefik / tinyauth / whoami) | **Up + healthy** (4.2 extra-vars fix merged) |
+| Wildcard HTTPS (staging CA) | **Issued** — `*.v2e.sh` + `v2e.sh`, TinyAuth gate verified (4.3) |
+| Production cert flip (Step 7) | **Pending** — branch `v2e-ansible feat/production-certs` ready |
 
-**One-line status:** infra + convergence are done; only the `compose_stack` app
-containers are gated, and only on the 4.2 extra-vars fix — no other blockers.
+**One-line status:** full stack green on the staging CA; the Step 7 production flip is
+the only remaining runbook step, staged and awaiting sign-off.
 
 ---
 
@@ -376,6 +428,8 @@ containers are gated, and only on the 4.2 extra-vars fix — no other blockers.
 | Step 2 · router hash | 1.2 (LibreSSL, key-only) |
 | Step 2 · template IDs / node model | 2.1 (`parrot_template_id`, UEFI, `control_*` sizing) |
 | Step 3a · TinyAuth user | 1.3 (`$2y$` → `$2a$`) |
-| Step 5 · clone + run Ansible | 4.1 (`ansible_repo_ref`), 4.2 (**open** SOPS/extra-vars) |
+| Step 5 · clone + run Ansible | 4.1 (`ansible_repo_ref`), 4.2 (SOPS extra-vars, resolved) |
 | Step 6 · connect to control | 3.1 (jump host), 3.2 (`v2e` sudo vs `ansible`) |
+| Step 6 check 5 / Appendix E · cert never issues | 4.3 (`:53` interception → `PropagationWait`, not the token) |
+| Step 7 · production flip | Part 5 (staged on `feat/production-certs`) |
 | Appendix A · Cloudflare tunnel | 2.2, 2.3 (Parrot codename / NetworkManager timing) |
