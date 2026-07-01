@@ -212,7 +212,11 @@ reaches the router; a special-char password no longer corrupts cloud-init.
 
 ---
 
-### `[ ]` TF-2 — SOPS secrets
+### `[x]` TF-2 — SOPS secrets
+
+> **Status:** implemented + validated on `feat/tf-critical-sops` → **PR #2** (bundled
+> with the TF-1 completion: jsonencode passwords, clone ansible `main`, remove
+> `extra_*`, `stop_on_destroy`). Merged to `main`.
 
 **Branch:** `feat/tf-sops-secrets` · **Depends on:** TF-1
 
@@ -235,7 +239,14 @@ baked binaries; blank var = byte-identical to TF-1.
 
 ---
 
-### `[ ]` TF-3 — Firewall + state hardening
+### `[x]` TF-3 — Firewall + state hardening
+
+> **Status:** implemented + validated on `fix/tf-hardening-state` → **PR #3** (stacked
+> on PR #2). Done: ICMP scoped to LAN; agent egress deny-default + allowlist (Q1 =
+> deny-default); `package_reboot_if_required=false` (Q2); state-encryption warning via
+> an `external` TF_ENCRYPTION probe + `check` (Q4 = keep local + TF_ENCRYPTION). The
+> default-deny firewall itself already landed on `main` earlier. Agent allowlist ships
+> as a starter set (DNS/NTP/80/443) — refine as needed. Merged.
 
 **Branch:** `fix/tf-hardening-state` · **Depends on:** TF-1
 
@@ -454,7 +465,7 @@ over HTTPS with redirect working.
 
 ---
 
-### `[ ]` COMPOSE-2 — Auth (TinyAuth)
+### `[x]` COMPOSE-2 — Auth (TinyAuth)
 
 **Branch:** `feat/compose-auth` · **Depends on:** COMPOSE-1
 
@@ -470,6 +481,54 @@ unprotected routes unaffected.
 > `v2e-compose`, branch `feat/compose-auth`. Implement COMPOSE-2 from the v2e master plan:
 > TinyAuth as a Traefik forward-auth middleware protecting the dashboard + selected
 > services, secrets from SOPS. Keep it swappable to Authelia+Valkey later.
+
+---
+
+### `[ ]` DNS-1 — Internal DNS appliance (Technitium) + `*.int.v2e.sh` *(added 2026-06-30)*
+
+**Repos:** `v2e-tf` + `v2e-ansible` + `v2e-compose` (cross-layer) · **Depends on:** Packer Debian
+template (9002), COMPOSE-2 · **Pairs with:** ANS-4 (Tailscale delivers it remotely). Full design:
+`v2e-docs/specs/2026-06-30-dns-appliance-design.md`.
+
+**Goal:** every Traefik-fronted dashboard reachable by name at `*.int.v2e.sh`, resolved by a
+self-hosted internal resolver. DNS supplies the name (`*.int.v2e.sh → 10.1.2.10`, the services
+node running Traefik); Tailscale (ANS-4) supplies the route for remote clients; on-lab nodes via
+VyOS DHCP.
+
+**Tasks (by layer):**
+- **TF:** add a `dns` node (VMID `node_vmid_base + 4`, Debian template, mgmt VLAN, `10.1.0.53`,
+  1 vCPU / 512 MB / 8 GB); VyOS firewall allow `53/udp+tcp` from control/services/agent VLANs →
+  `10.1.0.53`; VyOS DHCP option 6 = `10.1.0.53` for the node VLANs.
+- **Ansible:** a `technitium` role — install native (systemd), configure via the HTTP API
+  (authoritative `int.v2e.sh` zone, `*.int.v2e.sh → 10.1.2.10`, DoT forwarders, recursion
+  restricted to lab VLANs, query logging on). `internal_domain` group_var; API creds from SOPS.
+- **Compose:** introduce `INTERNAL_DOMAIN` (one config var, default `int.v2e.sh`); move the
+  COMPOSE-1/2 router host rules to `${INTERNAL_DOMAIN}`; extend the wildcard anchor to also
+  request `*.${INTERNAL_DOMAIN}`; add a `dns.${INTERNAL_DOMAIN}` router → the Technitium console
+  (`10.1.0.53:5380`) behind `auth@docker`.
+
+**Decisions:** dedicated minimal-Debian VM (foundational DNS off the app-stack Docker); Technitium
+native systemd, API-configured (chosen over Pi-hole/AdGuard for real zones + API + logging);
+dedicated subdomain `int.` (`lab.` is the CF tunnel); **`INTERNAL_DOMAIN` is one config variable**
+shared by Compose + Ansible — no hardcoded internal-domain strings; ACME stays safe via COMPOSE-1's
+`1.1.1.1` challenge-resolver pin. Feeds **Q1**/ANS-6 (agent DNS visibility); **Q5** (Tailscale
+scope) must include the DNS node's tailnet reachability.
+
+**Acceptance:** `dig traefik.int.v2e.sh @10.1.0.53` → `10.1.2.10`; upstream names still resolve;
+recursion refused from non-lab sources; `https://traefik.int.v2e.sh` loads behind auth with a valid
+`*.int.v2e.sh` LE cert; public `lab.v2e.sh` / `v2e.sh` unaffected; `technitium` role idempotent.
+
+**Kickoff prompt**
+
+> New dedicated conversation. Implement DNS-1 from the v2e master plan (full design:
+> `v2e-docs/specs/2026-06-30-dns-appliance-design.md`): a dedicated minimal-Debian DNS node
+> (`10.1.0.53`, mgmt VLAN) running **Technitium** native (systemd), configured via its HTTP API,
+> authoritative for `int.v2e.sh` with `*.int.v2e.sh → 10.1.2.10`, forwarding the rest upstream
+> over DoT. Split across `v2e-tf` (node + VyOS firewall/DHCP option 6), `v2e-ansible` (`technitium`
+> role), and `v2e-compose` (introduce `INTERNAL_DOMAIN`, move the dashboards onto `*.int.v2e.sh`,
+> extend the wildcard cert, add a `dns.int.v2e.sh` admin router behind `auth@docker`). Remote
+> delivery is ANS-4 (Tailscale split-DNS + subnet route) — document the hook, out of scope here.
+> Keep the ACME `1.1.1.1` pin. Brainstorm each repo's slice, then plan + implement.
 
 ---
 
