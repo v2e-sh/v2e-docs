@@ -29,6 +29,9 @@ clones the Ansible repo and runs the playbook across the mesh.
 
 ## Step 0 — One-time prerequisites (on the Proxmox host)
 
+> **Prereq (your mac):** `git`, `opentofu`, `ssh`; and for Block C only, `sops` +
+> `age` — `brew install opentofu git sops age`. Root/sudo on the PVE host.
+
 Do these once. They are *not* managed by Terraform.
 
 1. **Templates exist:** VyOS `9000`, Ubuntu `9001`, Debian `9002` (the VMIDs are
@@ -60,6 +63,10 @@ Do these once. They are *not* managed by Terraform.
 ---
 
 ## Building the VM templates (`v2e-templates`)
+
+> **Prereq:** a shell on the PVE host with `qm` + `libguestfs-tools`
+> (`apt install libguestfs-tools`), cloud-init-capable storage (`local-lvm`), and
+> internet from the host.
 
 A separate repo, **`v2e-templates`**, builds the templates **on the Proxmox host**
 (`virt-customize` + `qm`): each image is customized *offline*, imported, and turned into a
@@ -119,6 +126,8 @@ qm stop 9950 && qm destroy 9950 --purge
 
 ## Step 1 — Clone the project
 
+> **Prereq:** `git` on your mac.
+
 ```bash
 git clone https://github.com/v2e-sh/v2e-tf.git
 cd v2e-tf
@@ -128,12 +137,22 @@ cd v2e-tf
 
 ## Step 2 — Configure `terraform.tfvars`
 
-`terraform.tfvars` is gitignored (it holds secrets). Three self-contained blocks:
-**(A)** the base config (always), **(B)** the Cloudflare tunnel (optional), and in
-Step 3 **(C)** state encryption (optional). Each tfvars block re-prints the file
-so you can see exactly what's set so far.
+> **Prereq:** Step 0 done (templates + token). Your PVE API token and, for Block A,
+> your SSH public key (`~/.ssh/id_ed25519.pub` — the block creates one if missing).
+
+`terraform.tfvars` is gitignored (it holds secrets). Four self-contained blocks:
+**(A)** the base config (always), **(B)** the Cloudflare tunnel (optional),
+**(C)** SOPS-encrypted secrets (optional), and in Step 3 **(D)** state encryption
+(optional). Each tfvars block re-prints the file so you can see exactly what's set
+so far.
 
 ### Block A — base config (required)
+
+> **Rebuilding over a wiped deploy?** A previous plaintext `terraform.tfstate` held
+> your mesh SSH private keys + Proxmox/Cloudflare tokens in the clear — treat them as
+> **burned**. The mesh keys regenerate automatically on this apply; **rotate the
+> Proxmox API token and any Cloudflare token before reusing them below**, and turn on
+> state encryption (Step 3) so it doesn't happen again.
 
 Edit the values at the top. SSH is **key-only** on every node; the one password
 you set, `sudo_password`, is the `v2e` user's **sudo** password (not an SSH
@@ -227,9 +246,66 @@ chmod 600 terraform.tfvars
 cat terraform.tfvars                                  # review: base + Cloudflare
 ```
 
+### Block C — SOPS-encrypted secrets (optional)
+
+Ship one **age-encrypted** secrets file to `control` for Ansible (and Compose) to
+consume. At first boot control writes the age key to
+`~/.config/sops/age/keys.txt` and the encrypted file to
+`~/ansible/group_vars/all.yml`, so `sops` / `community.sops` decrypt it
+transparently. Skip this block and the lab deploys unchanged. Supersedes
+`ansible_vault_password` (the two can coexist). Set **both** vars or **neither** —
+a half-config fails a `tofu` check.
+
+> The age **private key is read into tf state** (like the mesh SSH keys). Turn on
+> state encryption (Step 3) and rotate the key on a clean rebuild.
+
+> **Always encrypt to a second, escrowed recipient.** Under SOPS a lost private key
+> loses *every* secret. The steps below mint a **backup** key kept offline (never on
+> control) that can also decrypt — so losing `keys.txt` is recoverable, not fatal.
+
+```bash
+# 1. Author the secrets your playbook expects (plaintext, just this once):
+cat > secrets.yaml <<'EOF'
+# becomes group_vars/all.yml on control — consumed by Ansible
+example_api_key: "replace-me"
+EOF
+
+# 2. Key control will use to decrypt (this one is shipped to control):
+age-keygen -o keys.txt
+AGE_PUB=$(grep -oE 'age1[0-9a-z]+' keys.txt | head -1)
+
+# 3. Backup/escrow key — store keys-backup.txt OFFLINE, never on control. It can
+#    also decrypt, so a lost keys.txt is recoverable, not fatal.
+age-keygen -o keys-backup.txt
+AGE_BACKUP=$(grep -oE 'age1[0-9a-z]+' keys-backup.txt | head -1)
+
+# 4. Encrypt to BOTH recipients, then shred the plaintext:
+sops --encrypt --age "${AGE_PUB},${AGE_BACKUP}" secrets.yaml > secrets.sops.yaml
+rm -P secrets.yaml
+
+cat >> terraform.tfvars <<EOF
+
+sops_secrets_file = "./secrets.sops.yaml"   # -> control:~/ansible/group_vars/all.yml
+sops_age_key_file = "./keys.txt"            # -> control:~/.config/sops/age/keys.txt
+EOF
+
+chmod 600 terraform.tfvars keys.txt keys-backup.txt secrets.sops.yaml
+cat terraform.tfvars                                  # review: base + Cloudflare + SOPS
+```
+
+> `keys.txt` (and the backup) decrypt everything — keep both out of git (neither is
+> `*.tfvars`; add them to `.gitignore` or store outside the repo) and keep
+> `keys-backup.txt` offline. Edit secrets later in place with `sops secrets.sops.yaml`.
+> **Rotating the age key** (add/replace a recipient) = `sops updatekeys secrets.sops.yaml`
+> after editing the recipients, then re-apply — full rotation/escrow runbook is DOCS-2.
+
 ---
 
 ## Step 3 — Encrypt the OpenTofu state (optional)
+
+> **Prereq:** a passphrase store — the example uses the macOS Keychain
+> (`security`). Do this **before** the first `apply` (brand-new deploy = no state
+> yet); converting existing plaintext state is the appendix.
 
 State is **plaintext by default** and holds secrets (both mesh SSH private keys,
 the Proxmox token, the Cloudflare token, the node passwords). Encryption is
@@ -239,7 +315,7 @@ and `tofu` just prints a harmless WARNING each run that state is plaintext.
 > ⚠️ Once you migrate on-disk state to encrypted, `TF_ENCRYPTION` must be set for
 > **every** tofu command. Lose the passphrase → state is **unrecoverable**.
 
-### Block C — stash a passphrase + enable encryption for this shell
+### Block D — stash a passphrase + enable encryption for this shell
 
 The `2>/dev/null` makes the Keychain write idempotent (ignores "already exists"
 on re-runs). Back up the printed passphrase, then re-run only the `export` part
@@ -265,6 +341,10 @@ EOF
 
 ## Step 4 — Deploy
 
+> **Prereq:** Steps 0–2 done; your SSH key loaded in the agent (`ssh-add -l`);
+> `ssh root@<PVE> true` returns with no prompt (Step 0); if you did Step 3,
+> `TF_ENCRYPTION` is exported in this shell.
+
 ```bash
 tofu init        # first time only — downloads providers (lock file is committed)
 tofu plan        # review: 1 keypair set + router (+snippet) + 3 nodes (+snippets) + time_sleep
@@ -277,6 +357,8 @@ boot and apply routing, then builds the three nodes.
 ---
 
 ## Step 5 — Connect
+
+> **Prereq:** `tofu apply` finished cleanly.
 
 VMs are recreated on each apply, so their host keys change. Clear stale ones
 first, then connect.
@@ -336,12 +418,18 @@ tofu output ssh_to_control_via_tunnel
 
 ## Step 6 — Verify
 
+> **Prereq:** you can reach control (Step 5).
+
 - `tofu output node_addresses` → the three static IPs.
 - From control: `ssh services hostname` and `ssh agent hostname` succeed by key.
 - Ansible bootstrap (on by default) ran on control's first boot — check it:
   ```bash
   v2e@control:~$ sudo cloud-init status --long
   v2e@control:~$ journalctl -u cloud-final --no-pager | tail -40
+  ```
+- If you used Block C (SOPS): the key + secrets are in place and decrypt:
+  ```bash
+  v2e@control:~$ sudo -iu ansible sops -d ~/ansible/group_vars/all.yml
   ```
 
 ---
@@ -393,6 +481,11 @@ tofu destroy                                                              # tear
 > cloud-init runs **once** per VM. Changing `terraform.tfvars` does **not**
 > re-apply on a live VM — use `-replace` (above) to recreate the affected VM.
 
+> **DR (disaster recovery):** state backup, age-key rotation/escrow, and snapshot
+> restore are the **DOCS-2** runbook (not yet written). The highest-leverage piece
+> is age-key rotation — under SOPS a lost private key loses every secret, so keep the
+> escrow key (Block C) safe until that runbook lands.
+
 ---
 
 ## Troubleshooting & hard-won gotchas (don't re-learn these)
@@ -426,6 +519,10 @@ tofu destroy                                                              # tear
   stray `# comments` or stacked `ssh` lines.
 - **The cluster private keys are embedded** in control's cloud-init drive
   (unavoidable for this pattern) — treat that VM's disk/snapshots accordingly.
+- **SOPS "half-configured" check fails** → set **both** `sops_secrets_file` and
+  `sops_age_key_file`, or **neither**. If control can't decrypt (`sops -d` errors),
+  `keys.txt` isn't the key `secrets.sops.yaml` was encrypted to — re-encrypt to the
+  `age1…` public key in your `keys.txt`.
 - **Teardown hangs on `Still destroying… [id=3xx]`** → on destroy bpg does a
   *graceful* shutdown and waits on the guest agent (`guest-ping`); if the agent
   isn't running it blocks up to `timeout_shutdown_vm` (~30 min). The VMs set

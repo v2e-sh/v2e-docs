@@ -155,7 +155,7 @@ DOCS-1/2: parallel; finalize last
 
 > Legend: `[ ]` not started · `[~]` in progress · `[x]` merged to main.
 
-### `[ ]` Phase 0/E — Packer templates
+### `[x]` Phase 0/E — Packer templates
 
 **Branch:** `feat/packer-templates` · **Repo:** `v2e-packer` (new) · **Upstream of:** TF-1
 
@@ -186,7 +186,7 @@ agent working and `sops`/`age` present.
 
 ---
 
-### `[ ]` TF-1 — Critical fixes + simplifications
+### `[x]` TF-1 — Critical fixes + simplifications
 
 **Branch:** `fix/tf-critical` · **Repo:** `v2e-tf` · **Depends on:** Phase 0 templates
 
@@ -427,7 +427,7 @@ session is replayable; shipping survives local log deletion. Molecule idempotenc
 
 ---
 
-### `[ ]` COMPOSE-1 — Traefik + Cloudflare DNS-01 + wildcard HTTPS
+### `[x]` COMPOSE-1 — Traefik + Cloudflare DNS-01 + wildcard HTTPS
 
 **Branch:** `feat/compose-traefik-tls` · **Repo:** `v2e-compose`
 
