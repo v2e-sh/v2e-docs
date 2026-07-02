@@ -59,10 +59,10 @@ App URLs (internal, trusted cert): `https://<app>.int.v2e.sh` for
   `03-applications` → `04-infra`. Control clones + runs this at first boot.
 - **v2e-compose** — docker stacks (traefik/tinyauth/whoami/semaphore/arcane/observability/technitium/rustdesk).
 - **v2e-templates** — Proxmox image build (run on the PVE host; `bash build-{ubuntu,debian,vyos,parrot}.sh`; staging VMIDs 9900-9903).
-- **v2e-docs** — this file, `RUNBOOK.md`, `MASTER-PLAN.md`, `specs/`, `plans/`, `RUNBOOK-DEVIATIONS-2026-07-01.md`.
+- **v2e-docs** — this file, `RUNBOOK.md`, `CONFIGURATION.md`, `MASTER-PLAN.md`, `specs/`, `plans/`, `RUNBOOK-DEVIATIONS-2026-07-01.md`.
 
 Deploy flow: build templates (host) → set variables → `tofu apply` (v2e-tf) → control auto-runs
-v2e-ansible → stacks come up. See `RUNBOOK.md` (note: **runbook needs the prod rewrite — backlog #D1**).
+v2e-ansible → stacks come up. Walk-through: `RUNBOOK.md`; every variable: `CONFIGURATION.md`.
 
 ---
 
@@ -142,10 +142,10 @@ socket-proxy), H3 (arcane seeded creds), rotate all secrets + age key, M1-M5.
 mac `/etc/resolver/int.v2e.sh` or a Tailscale exit node so no per-service config is needed.
 
 **D. Docs (prod-ready)**:
-- **D1** rewrite `RUNBOOK.md` straightforward: prereqs → fill variables → deploy → verify. Cross-reference `specs/` inline, no fluff.
-- **D2** new `CONFIGURATION.md` — every required variable (tfvars, SOPS, group_vars) in one place with description + how-to-generate + a copy-paste `secrets.yaml` template.
+- **D1** ✅ DONE — `RUNBOOK.md` rewritten straightforward (prereqs → variables → deploy → verify → access), 5-node reality, specs cross-referenced, manual post-deploy steps called out (Step 8).
+- **D2** ✅ DONE — `CONFIGURATION.md`: every variable (tfvars, SOPS, group_vars, config.env) with how-to-generate + copy-paste `secrets.yaml` template.
 - **D3** reconcile the stale `plans/2026-07-01-dns-1-ansible-technitium.md` (describes a `dns` node @ `.53` native — reality is Docker on `infra` @ `.10`).
-- **D4** open docs PRs #2 (full-stack-runbook) / #3 (master-plan-reconcile): review vs current reality, merge or close.
+- **D4** docs PR #2 (full-stack-runbook) superseded by the D1 rewrite — closed. PR #3 (master-plan-reconcile) still open: review vs current reality, merge or close.
 
 **E. Remaining MASTER-PLAN phases**: COMPOSE-4 (Cloudflare tunnel + 2FA), Phase G alerting rules,
 Phase H (GHCR images), agent/MCP (Phase I), DR/backup (DOCS-2).
