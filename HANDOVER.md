@@ -59,18 +59,25 @@ App URLs (internal, trusted cert): `https://<app>.int.v2e.sh` for
   `03-applications` → `04-infra`. Control clones + runs this at first boot.
 - **v2e-compose** — docker stacks (traefik/tinyauth/whoami/semaphore/arcane/observability/technitium/rustdesk).
 - **v2e-templates** — Proxmox image build (run on the PVE host; `bash build-{ubuntu,debian,vyos,parrot}.sh`; staging VMIDs 9900-9903).
-- **v2e-docs** — this file, `RUNBOOK.md`, `MASTER-PLAN.md`, `specs/`, `plans/`, `RUNBOOK-DEVIATIONS-2026-07-01.md`.
+- **v2e-docs** — this file, `RUNBOOK.md`, `CONFIGURATION.md`, `MASTER-PLAN.md`, `specs/`, `plans/`, `RUNBOOK-DEVIATIONS-2026-07-01.md`.
 
 Deploy flow: build templates (host) → set variables → `tofu apply` (v2e-tf) → control auto-runs
-v2e-ansible → stacks come up. See `RUNBOOK.md` (note: **runbook needs the prod rewrite — backlog #D1**).
+v2e-ansible → stacks come up. Walk-through: `RUNBOOK.md`; every variable: `CONFIGURATION.md`.
 
 ---
 
 ## 4. Outstanding: live config NOT yet in IaC (drift — top priority)
 
 These were configured **by hand this session** and must become ansible roles + variables (owner's
-rule: *every configurable thing = a variable, auto-applied*). Until then, a clean rebuild will NOT
-reproduce them. Proposed structure (from the IaC review):
+rule: *every configurable thing = a variable, auto-applied*).
+
+> **STATUS 2026-07-02: implemented in v2e-ansible PR #13** (roles: tailscale wrapper,
+> technitium_zone, rustdesk_client, control_desktop; compose_stack reuse via
+> group_vars/infra.yml; env.j2 fix; phases 05/06 in site.yml). SOPS gained
+> `tailscale_authkey` (empty — mint a reusable key) + `rustdesk_unattended_password`.
+> **Not yet run against the lab** — test plan in the PR; `--check --diff` from control
+> first. Until merged+applied, a clean rebuild still does not reproduce these. The
+> original mapping (now implemented):
 
 | Live thing | Proposed | Secrets (SOPS) | Non-secret (group_vars) |
 |---|---|---|---|
@@ -131,8 +138,10 @@ renders cf/tinyauth/semaphore/arcane/grafana secrets but **not** `TECHNITIUM_ADM
 
 ## 7. Backlog / future work (prioritized)
 
-**A. Codify live config into roles+variables** (§4) — the top ask. Tailscale, Technitium, RustDesk,
-control-desktop roles; env.j2 technitium fix. Then a clean rebuild reproduces everything.
+**A. Codify live config into roles+variables** (§4) — **authored, v2e-ansible PR #13** (pending
+review + a `--check --diff` run from control). Remaining after merge: mint a reusable
+`tailscale_authkey`, pin `rustdesk_client_version`+sha256, approve route/split-DNS in the
+Tailscale console. Then a clean rebuild reproduces everything.
 
 **B. Security hardening for launch**: C2 (encrypt state), H1 (dedicated DNS-01 token), H2 (arcane
 socket-proxy), H3 (arcane seeded creds), rotate all secrets + age key, M1-M5.
@@ -142,10 +151,10 @@ socket-proxy), H3 (arcane seeded creds), rotate all secrets + age key, M1-M5.
 mac `/etc/resolver/int.v2e.sh` or a Tailscale exit node so no per-service config is needed.
 
 **D. Docs (prod-ready)**:
-- **D1** rewrite `RUNBOOK.md` straightforward: prereqs → fill variables → deploy → verify. Cross-reference `specs/` inline, no fluff.
-- **D2** new `CONFIGURATION.md` — every required variable (tfvars, SOPS, group_vars) in one place with description + how-to-generate + a copy-paste `secrets.yaml` template.
+- **D1** ✅ DONE — `RUNBOOK.md` rewritten straightforward (prereqs → variables → deploy → verify → access), 5-node reality, specs cross-referenced, manual post-deploy steps called out (Step 8).
+- **D2** ✅ DONE — `CONFIGURATION.md`: every variable (tfvars, SOPS, group_vars, config.env) with how-to-generate + copy-paste `secrets.yaml` template.
 - **D3** reconcile the stale `plans/2026-07-01-dns-1-ansible-technitium.md` (describes a `dns` node @ `.53` native — reality is Docker on `infra` @ `.10`).
-- **D4** open docs PRs #2 (full-stack-runbook) / #3 (master-plan-reconcile): review vs current reality, merge or close.
+- **D4** docs PR #2 (full-stack-runbook) superseded by the D1 rewrite — closed. PR #3 (master-plan-reconcile) still open: review vs current reality, merge or close.
 
 **E. Remaining MASTER-PLAN phases**: COMPOSE-4 (Cloudflare tunnel + 2FA), Phase G alerting rules,
 Phase H (GHCR images), agent/MCP (Phase I), DR/backup (DOCS-2).
