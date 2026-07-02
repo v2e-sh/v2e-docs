@@ -205,8 +205,8 @@ or feature branch of v2e-ansible).
 > **Not on `v2e.sh`?** The app domain is set in **v2e-ansible**
 > `inventory/group_vars/services.yml` (`compose_stack_domain`,
 > `compose_stack_acme_email`), not in tfvars. Fork v2e-ansible, edit those two
-> values, and point `ansible_repo_url` at your fork. See
-> [`CONFIGURATION.md` §3](CONFIGURATION.md#3-v2e-ansible--group_vars).
+> values, and point `ansible_repo_url` at your fork. See §3 of
+> [`CONFIGURATION.md`](CONFIGURATION.md).
 
 > **Rebuilding over a wiped deploy?** A previous plaintext `terraform.tfstate` held
 > your mesh SSH private keys + Proxmox/Cloudflare tokens in the clear — treat them as
@@ -288,8 +288,8 @@ EOF
 chmod 600 terraform.tfvars keys.txt keys-backup.txt secrets.sops.yaml
 ```
 
-What each key is for, and the exact generation rule per key:
-[`CONFIGURATION.md` §2](CONFIGURATION.md#2-secretssopsyaml--app-secrets).
+What each key is for, and the exact generation rule per key: §2 of
+[`CONFIGURATION.md`](CONFIGURATION.md).
 Edit values later with `sops secrets.sops.yaml`; rotate recipients with
 `sops updatekeys` after editing `.sops.yaml`.
 
