@@ -154,7 +154,9 @@ compose interpolation. Edit later with `sops secrets.sops.yaml`.
 | `arcane_encryption_key` | for arcane | `openssl rand -base64 32` | Arcane data encryption |
 | `arcane_jwt_secret` | for arcane | `openssl rand -base64 32` | Arcane sessions |
 | `grafana_admin_password` | for observability | `openssl rand -base64 15` | Grafana `admin` login |
-| `technitium_admin_password` | for infra DNS | `openssl rand -base64 15` | Technitium console `:5380` (see gap in §6) |
+| `technitium_admin_password` | for infra DNS | `openssl rand -base64 15` | Technitium console `:5380` + zone API |
+| `tailscale_authkey` | for tailnet access | Tailscale admin console → *Settings → Keys* — mint a **reusable** key (an ephemeral one drops the node on reboot). Empty = the tailscale role skips with a warning | control + infra `tailscale up` |
+| `rustdesk_unattended_password` | for RustDesk | `openssl rand -base64 15` | Unattended access to the control desktop |
 
 Copy-paste template (RUNBOOK Step 3 wraps this with generation + encryption):
 
@@ -169,6 +171,8 @@ arcane_encryption_key: "<openssl rand -base64 32>"
 arcane_jwt_secret: "<openssl rand -base64 32>"
 grafana_admin_password: "<openssl rand -base64 15>"
 technitium_admin_password: "<openssl rand -base64 15>"
+tailscale_authkey: "<reusable key from the Tailscale admin console, or empty>"
+rustdesk_unattended_password: "<openssl rand -base64 15>"
 ```
 
 Encrypt to **two** age recipients — control's key and an offline backup key
@@ -197,16 +201,40 @@ at it. Files live in `inventory/group_vars/`.
 | `compose_stack_repo_url` / `compose_stack_dir` | v2e-compose.git / `/opt/v2e-compose` | Fork-and-point as with ansible |
 | `ssh_allow_users` | `"v2e ansible"` | sshd AllowUsers on this node |
 
-### 3.2 Other committed group_vars
+### 3.2 infra.yml — DNS + relay appliance
+
+| Variable | Current value | Notes |
+|---|---|---|
+| `compose_stack_stacks` | technitium, rustdesk | Host-network stacks; `compose_stack_network: ""` skips the Traefik bridge |
+| `compose_stack_required_secrets` | `[technitium_admin_password]` | Per-group fail-fast assert (services keeps the traefik/tinyauth pair) |
+| `infra_upstream_nameservers` | `[1.1.1.1, 9.9.9.9]` | Node resolv.conf **and** Technitium's forwarders (`technitium_forwarders` derives from it) |
+| `technitium_zone_name` | `"int.v2e.sh"` | The internal zone the API role creates |
+| `technitium_zone_wildcard_target` | `10.1.2.10` | Apex + `*.int.<domain>` → services/Traefik |
+| `technitium_zone_records` | infra/control/services/agent → their IPs | Per-node A records inside the zone |
+| `tailscale_node_ssh` / `tailscale_node_advertise_routes` | `true` / `""` | infra joins the tailnet plainly |
+
+### 3.3 control.yml — tailnet + desktop
+
+| Variable | Current value | Notes |
+|---|---|---|
+| `tailscale_node_advertise_routes` | `"10.1.0.0/16"` | control is the subnet router. **Route approval + split-DNS (`int.<domain>` → `10.1.0.10`) stay manual in the Tailscale admin console** |
+| `tailscale_node_ssh` | `true` | Tailscale SSH to control from the tailnet |
+| `control_desktop_autologin_user` / `_session` | `v2e` / `plasmax11` | RustDesk needs a live X11 session |
+| `control_desktop_disable_compositing` | `true` | Remote-desktop smoothness |
+| `control_desktop_nameservers` | `[10.1.0.10]` | Desktop browser resolves `int.<domain>` via Technitium |
+| `control_desktop_hosts_entries` | `{}` | Optional /etc/hosts shim (managed block; empty removes it) |
+| `rustdesk_client_version` / `_deb_sha256` | `""` / `""` | Pin the exact release; empty = install skipped with a warning |
+
+### 3.4 Other committed group_vars
 
 | File | Variable | Value | Why |
 |---|---|---|---|
 | linux.yml | `sysctl_overwrite: {net.ipv4.ip_forward: 1}` | — | devsec hardening sets 0, which breaks Docker |
 | linux.yml | `ssh_client_alive_count` | `2` | 600s idle timeout (interval 300 × 2) |
 | control.yml | `ssh_allow_users` | `"v2e"` | Control accepts only the human account |
-| agent.yml | `ssh_allow_users` | `"v2e ansible"` | |
+| agent.yml / infra.yml | `ssh_allow_users` | `"v2e ansible"` | |
 
-### 3.3 Role defaults worth knowing (override in group_vars)
+### 3.5 Role defaults worth knowing (override in group_vars)
 
 | Role | Variable | Default | Meaning |
 |---|---|---|---|
@@ -221,7 +249,7 @@ at it. Files live in `inventory/group_vars/`.
 | patch (ops) | `patch_upgrade` / `patch_autoremove` | `"dist"` / `true` | Never reboots the controller |
 | killswitch (ops) | `killswitch_state` | `"cut"` | `cut` \| `allow` \| `cut-hard`; tag-gated, persists via `killswitch_save` |
 
-### 3.4 Vault-encrypted extras (optional)
+### 3.6 Vault-encrypted extras (optional)
 
 `ai_workbench` reads `vault_anthropic_api_key` / `vault_openai_api_key` from an
 Ansible-Vault-encrypted vars file (pair with `ansible_vault_password` in §1.6).
@@ -260,14 +288,14 @@ values.
 
 ---
 
-## 6. Known gaps (tracked in HANDOVER.md §4/§7)
+## 6. Known gaps (tracked in HANDOVER.md §7)
 
-- `roles/compose_stack/templates/env.j2` does **not** yet render
-  `TECHNITIUM_ADMIN_PASSWORD` / `NAME_SERVERS` — the infra Technitium stack fails
-  closed without a hand-written `.env` (remember the `$$` escaping).
-- Not yet variables/roles at all (manual post-deploy, RUNBOOK Step 8): Tailscale
-  (`tailscale_authkey` + route/DNS settings), the Technitium **zone content**,
-  the RustDesk client on control, and the control-desktop settings (autologin,
-  compositor, resolv.conf).
+- **Manual by nature** (tailnet-side, no node API): approving control's advertised
+  route and setting split-DNS `int.<domain>` → `10.1.0.10` in the Tailscale admin
+  console.
+- **Values still to pin**: `rustdesk_client_version` + `.deb` sha256 (empty = the
+  role skips); a **reusable** `tailscale_authkey` (the SOPS key is present but
+  empty until minted); the live `/etc/hosts` shim entries (variable defaults to
+  empty — capture before enabling).
 - Live-lab throwaway credentials are recorded in `v2e-tf/.deploy-creds.txt` (local,
   gitignored) — rotate everything at real launch.

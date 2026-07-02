@@ -232,6 +232,8 @@ asserts on.
 # ---- EDIT THESE ----
 CF_DNS_TOKEN='your-scoped-cloudflare-token'    # Zone:Read + DNS:Edit (Step 0)
 TA_USER='admin'                                # TinyAuth login user
+TS_AUTHKEY=''                                  # Tailscale REUSABLE auth key (admin console →
+                                               # Settings → Keys); empty = tailnet join skipped
 
 # TinyAuth password + bcrypt hash. htpasswd emits $2y$; TinyAuth (Go bcrypt)
 # only accepts $2a$/$2b$ — the sed rewrite is REQUIRED or login silently fails.
@@ -242,9 +244,11 @@ TA_HASH=$(htpasswd -bnBC 10 "$TA_USER" "$TA_PASS" | sed 's/\$2y\$/\$2a\$/')
 GRAFANA_PW=$(openssl rand -base64 15)
 SEMAPHORE_PW=$(openssl rand -base64 15)
 TECHNITIUM_PW=$(openssl rand -base64 15)
-echo "Grafana admin (SAVE THIS):    $GRAFANA_PW"
-echo "Semaphore admin (SAVE THIS):  $SEMAPHORE_PW"
-echo "Technitium admin (SAVE THIS): $TECHNITIUM_PW"
+RUSTDESK_PW=$(openssl rand -base64 15)
+echo "Grafana admin (SAVE THIS):        $GRAFANA_PW"
+echo "Semaphore admin (SAVE THIS):      $SEMAPHORE_PW"
+echo "Technitium admin (SAVE THIS):     $TECHNITIUM_PW"
+echo "RustDesk unattended (SAVE THIS):  $RUSTDESK_PW"
 
 # 1. Author the plaintext secrets file (deleted after encryption):
 cat > secrets.yaml <<EOF
@@ -258,6 +262,8 @@ arcane_encryption_key: "$(openssl rand -base64 32)"
 arcane_jwt_secret: "$(openssl rand -base64 32)"
 grafana_admin_password: "${GRAFANA_PW}"
 technitium_admin_password: "${TECHNITIUM_PW}"
+tailscale_authkey: "${TS_AUTHKEY}"
+rustdesk_unattended_password: "${RUSTDESK_PW}"
 EOF
 
 # 2. Age key control uses to decrypt (shipped to control by cloud-init):
@@ -449,33 +455,26 @@ everywhere; `ansible` is internal-only.
 
 ---
 
-## Step 8 — Post-deploy steps that are NOT yet automated
+## Step 8 — Post-deploy steps that stay manual
 
-> ⚠️ **Honesty section.** A fresh `tofu apply` reproduces everything above. The
-> items below were configured by hand on the current live lab and are **not yet
-> codified** — they are backlog item **A** in [`HANDOVER.md` §4/§7](HANDOVER.md), which
-> also carries the working notes for each. Until they land as Ansible roles, a clean
-> rebuild needs these done manually (or skipped — nothing above depends on them):
+The Technitium stacks + zone, Tailscale join, RustDesk client, and control-desktop
+settings are all Ansible-managed (phases 04/05/06; design:
+`specs/2026-06-30-dns-appliance-design.md`). What remains is genuinely manual —
+tailnet-side settings and one client-side pin:
 
-1. **Technitium DNS content on infra** — deploy the `technitium` + `rustdesk` stacks
-   from v2e-compose on the infra node, then create the `int.<domain>` zone: wildcard
-   `*.int.<domain>` → `10.1.2.10` (services) plus per-node A records. Console:
-   `http://10.1.0.10:5380` (admin password = `technitium_admin_password` from Step 3).
-   Design: `specs/2026-06-30-dns-appliance-design.md`.
-   *Known gap:* the Ansible `env.j2` template doesn't yet render
-   `TECHNITIUM_ADMIN_PASSWORD` / `NAME_SERVERS`, so the stack needs a hand-written
-   `.env` on infra until that's fixed.
-2. **Tailscale** on control (+ optionally infra) — `tailscale up --ssh
-   --advertise-routes=10.1.0.0/16`, approve the subnet route in the admin console,
-   and set split-DNS `int.<domain>` → `10.1.0.10`. Gives your mac browser access to
-   every app. (macOS: if split-DNS is flaky, `echo 'nameserver 10.1.0.10' | sudo tee
+1. **Tailscale admin console** (after the first converge with a `tailscale_authkey`
+   set): **approve** control's advertised route `10.1.0.0/16`, and set **split-DNS**
+   `int.<domain>` → `10.1.0.10`. That gives your mac browser access to every app.
+   (macOS: if split-DNS is flaky, `echo 'nameserver 10.1.0.10' | sudo tee
    /etc/resolver/int.<domain>` — and note Mullvad hijacks DNS while connected.)
-3. **RustDesk client on control** — install the client .deb, set an unattended
-   password, connect from your mac via **Direct IP** to control's tailnet IP (the
-   public-ID path requires RustDesk's login now).
-4. **Control desktop conveniences** — lightdm autologin for `v2e`
-   (`autologin-session=plasmax11`; RustDesk needs an active X11 session), KDE
-   compositor off, `resolv.conf` → Technitium.
+2. **RustDesk release pin** — set `rustdesk_client_version` + the `.deb` sha256 in
+   v2e-ansible `inventory/group_vars/control.yml` (the role skips with a warning
+   until pinned). Then connect from your mac via **Direct IP** to control's tailnet
+   IP (the public-ID path requires RustDesk's login now); the unattended password is
+   `rustdesk_unattended_password` from Step 3.
+3. **Skipped something in Step 3?** An empty `tailscale_authkey` or RustDesk pin
+   just skips those phases — set the value and re-run Ansible (Day-2 section) to
+   pick them up.
 
 ---
 
