@@ -162,11 +162,24 @@ rules services→{home,agent,control}:9100 → needs a router rebuild + widens t
 is lowest priority (restricted AI node). Today: services host + all containers ARE monitored
 (node-exporter + cadvisor + app metrics); only other VMs' host metrics are dark.
 
-**H. Backup/DR** (review compose#6): data is throwaway pre-launch, so no backup exists. Minimal
-codified option now = an ansible systemd-timer role doing pg_dump (semaphore) + tar of
-{technitium zone, arcane data, acme.json, grafana} to a timestamped archive on `home`/external
-mount. Full offsite DR (restic→remote + age-key escrow) = launch (DOCS-2). Do the minimal local
-snapshot once any lab state stops being throwaway.
+**H. Backup/DR** (review compose#6): **target = the user's TrueNAS** (redundant databases + files).
+Plan: an ansible systemd-timer role → pg_dump (semaphore) + tar of {technitium zone, arcane data,
+acme.json, grafana, uptime-kuma} → push to a TrueNAS share (NFS/SMB mount or `restic`/`rsync` to a
+TrueNAS dataset). Add TrueNAS as an offsite/redundant copy (3-2-1). Do once any lab state stops
+being throwaway; wire the TrueNAS mount as a variable.
+
+**I. De-Cloudflare / privacy migration** (user direction, needs the VPS first): move off Cloudflare
+toward certbot to shrink the third-party footprint. Steps once a VPS exists: run ACME via certbot
+(HTTP-01 on the VPS, or DNS-01 with a non-Cloudflare privacy DNS provider); retire the Cloudflare
+tunnel + broad DNS token; consider a self-hosted internal CA (step-ca) for `*.int.v2e.sh` so
+internal hostnames stop leaking into public CT logs. See the privacy audit output for the full
+roadmap. Related: the Mullvad exit (below) and headscale (self-hosted Tailscale control plane).
+
+**J. Mullvad exit node**: scaffold merged (v2e-compose `mullvad-exit`, gluetun + tailscale sidecar);
+Mullvad WireGuard creds now in SOPS (`mullvad_wireguard_private_key`/`_addresses` — throwaway, from
+the AT key generated 2026-07-02, rotate at prod). Enable = uncomment `mullvad-exit` in
+group_vars/infra.yml + refresh control's secrets + converge + approve "mullvad" in the TS console.
+Moves to a VPS later (stack is portable via .env).
 
 **C. Access polish**: reusable/tagged Tailscale key (survives reboot); decide exit-node + Mullvad
 (paid Tailscale-Mullvad exit, or DIY Mullvad on an exit node — see the exit-node discussion); the
