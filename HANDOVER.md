@@ -71,13 +71,14 @@ v2e-ansible → stacks come up. Walk-through: `RUNBOOK.md`; every variable: `CON
 These were configured **by hand this session** and must become ansible roles + variables (owner's
 rule: *every configurable thing = a variable, auto-applied*).
 
-> **STATUS 2026-07-02: implemented in v2e-ansible PR #13** (roles: tailscale wrapper,
-> technitium_zone, rustdesk_client, control_desktop; compose_stack reuse via
-> group_vars/infra.yml; env.j2 fix; phases 05/06 in site.yml). SOPS gained
+> **STATUS 2026-07-02: implemented in v2e-ansible PR #13 and VALIDATED by two full
+> clean rebuilds** (roles: tailscale wrapper, technitium_zone, rustdesk_client,
+> control_desktop; compose_stack reuse via group_vars/infra.yml; env.j2 fix; phases
+> 05/06 in site.yml). Round 2 converged unattended: cloud-init done, errors: [],
+> zone + stacks + prod cert + desktop artifacts all verified. SOPS gained
 > `tailscale_authkey` (empty — mint a reusable key) + `rustdesk_unattended_password`.
-> **Not yet run against the lab** — test plan in the PR; `--check --diff` from control
-> first. Until merged+applied, a clean rebuild still does not reproduce these. The
-> original mapping (now implemented):
+> Remaining: merge #13, revert `ansible_repo_ref=""` in tfvars, mint the reusable
+> tailscale key, pin `rustdesk_client_version`+sha256. The original mapping:
 
 | Live thing | Proposed | Secrets (SOPS) | Non-secret (group_vars) |
 |---|---|---|---|
