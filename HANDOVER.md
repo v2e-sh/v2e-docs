@@ -147,6 +147,27 @@ Tailscale console. Then a clean rebuild reproduces everything.
 **B. Security hardening for launch**: C2 (encrypt state), H1 (dedicated DNS-01 token), H2 (arcane
 socket-proxy), H3 (arcane seeded creds), rotate all secrets + age key, M1-M5.
 
+**A2. Code-review sweep 2026-07-02 — DONE (merged + live)**: 43 findings triaged/implemented/
+adversarially-verified. Landed: tf plan-time validation (v2e-tf #15), technitium API retries +
+per-group secret scoping + locale/NM fixes (v2e-ansible #18), mem/cpu limits + healthchecks on
+every stack (v2e-compose #12, deployed — all containers healthy), template `.part` cleanup + a
+`set -e` bug (v2e-templates #4). Rejected wrong ones (ai-identities re-scope, loki schema-date
+edit, postgres mount). **Two escalated, need YOUR call (below G/H).**
+
+**G. Cross-node host metrics** (review compose#2): Prometheus (on services) can't scrape
+node-exporter on the isolated spokes — the VyOS firewall isolates spokes by design. Options:
+(a) **[recommended]** scrape over the tailnet — node-exporter on `home`+`control` (both on the
+tailnet), put services on the tailnet too, scrape 100.x IPs → no VLAN holes; (b) narrow VyOS
+rules services→{home,agent,control}:9100 → needs a router rebuild + widens the boundary. `agent`
+is lowest priority (restricted AI node). Today: services host + all containers ARE monitored
+(node-exporter + cadvisor + app metrics); only other VMs' host metrics are dark.
+
+**H. Backup/DR** (review compose#6): data is throwaway pre-launch, so no backup exists. Minimal
+codified option now = an ansible systemd-timer role doing pg_dump (semaphore) + tar of
+{technitium zone, arcane data, acme.json, grafana} to a timestamped archive on `home`/external
+mount. Full offsite DR (restic→remote + age-key escrow) = launch (DOCS-2). Do the minimal local
+snapshot once any lab state stops being throwaway.
+
 **C. Access polish**: reusable/tagged Tailscale key (survives reboot); decide exit-node + Mullvad
 (paid Tailscale-Mullvad exit, or DIY Mullvad on an exit node — see the exit-node discussion); the
 mac `/etc/resolver/int.v2e.sh` or a Tailscale exit node so no per-service config is needed.
