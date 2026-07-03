@@ -1,4 +1,4 @@
-site_name: v2e — Lab Documentation
+site_name: v2e.sh — Lab Documentation
 site_description: Deploy and operate the v2e homelab (Proxmox · VyOS · OpenTofu · Ansible · Docker)
 site_url: https://v2e-sh.github.io/v2e-docs/
 repo_url: https://github.com/v2e-sh/v2e-docs
@@ -14,26 +14,38 @@ nav:
   - Home: README.md
   - Runbook: RUNBOOK.md
   - Configuration reference: CONFIGURATION.md
+  - System:
+      - Architecture overview: system/architecture.md
+      - Network, VLANs & firewall: system/networking.md
+      - Application estate: system/applications.md
+      - Tailscale, exit nodes & DNS: system/tailscale-dns.md
+      - Secrets & SOPS flow: system/secrets.md
+      - Deploy & bootstrap lifecycle: system/lifecycle.md
+      - Observability & alerting: system/observability.md
   - Design specs:
       - VM templates: specs/2026-06-30-packer-templates-design.md
       - Traefik + TLS: specs/2026-06-30-compose-traefik-tls-design.md
       - Auth (TinyAuth): specs/2026-06-30-compose-auth-design.md
       - DNS appliance: specs/2026-06-30-dns-appliance-design.md
+  - Audits:
+      - "2026-07-03": audits/AUDIT-2026-07-03.md
 
 theme:
   name: material
+  custom_dir: overrides
+  logo: assets/brand/logo-header.svg
+  favicon: assets/brand/favicon.svg
+  font:
+    text: Inter
+    code: Martian Mono
   palette:
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
-      primary: teal
-      accent: teal
       toggle:
         icon: material/weather-sunny
         name: Light mode
     - media: "(prefers-color-scheme: light)"
       scheme: default
-      primary: teal
-      accent: teal
       toggle:
         icon: material/weather-night
         name: Dark mode
@@ -46,6 +58,9 @@ theme:
     - search.suggest
     - search.highlight
     - content.code.copy
+
+extra_css:
+  - assets/brand.css
 
 plugins:
   - search

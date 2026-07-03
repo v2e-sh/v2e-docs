@@ -1,0 +1,75 @@
+/* v2e.sh brand — muted/earthy dual-mode palette (locked 2026-07-02).
+   Overrides Material's CSS variables so the site matches the logo package.
+   Header is kept a consistent dark neutral in BOTH modes so the single
+   light-ink lockup (logo-header.svg) reads everywhere; the body flips. */
+
+:root {
+  --v2e-violet-dark:  #9184B0;
+  --v2e-violet-light: #6E6191;
+  /* header (both schemes) */
+  --v2e-header-bg:    #212121;
+  --v2e-header-fg:    #DBD7CF;
+}
+
+/* --- header + tabs: dark neutral in both modes, violet accent underline --- */
+.md-header,
+.md-tabs {
+  background-color: var(--v2e-header-bg);
+  color: var(--v2e-header-fg);
+}
+
+/* ---------------------------- DARK (slate) ---------------------------- */
+[data-md-color-scheme="slate"] {
+  --md-hue: 0;
+  --md-primary-fg-color:        #2A2A2A;
+  --md-primary-fg-color--light: #363636;
+  --md-primary-fg-color--dark:  #1A1A1A;
+  --md-primary-bg-color:        #DBD7CF;
+  --md-primary-bg-color--light: #918981;
+
+  --md-accent-fg-color:         var(--v2e-violet-dark);
+  --md-accent-fg-color--transparent: #9184b01a;
+
+  --md-default-bg-color:        #212121;
+  --md-default-fg-color:        #DBD7CF;
+  --md-default-fg-color--light: #918981;
+  --md-default-fg-color--lighter: #6b6962;
+
+  --md-typeset-color:           #DBD7CF;
+  --md-typeset-a-color:         var(--v2e-violet-dark);
+
+  --md-code-bg-color:           #1A1A1A;
+  --md-code-fg-color:           #DBD7CF;
+
+  --md-footer-bg-color:         #1A1A1A;
+  --md-footer-bg-color--dark:   #161616;
+}
+
+/* --------------------------- LIGHT (default) --------------------------- */
+[data-md-color-scheme="default"] {
+  --md-primary-fg-color:        #F9F9F7;
+  --md-primary-fg-color--light: #F1F1EE;
+  --md-primary-fg-color--dark:  #E7E7E2;
+  --md-primary-bg-color:        #35342E;
+  --md-primary-bg-color--light: #6B6962;
+
+  --md-accent-fg-color:         var(--v2e-violet-light);
+  --md-accent-fg-color--transparent: #6e61911a;
+
+  --md-default-bg-color:        #F1F1EE;
+  --md-default-fg-color:        #35342E;
+  --md-default-fg-color--light: #6B6962;
+
+  --md-typeset-color:           #35342E;
+  --md-typeset-a-color:         var(--v2e-violet-light);
+
+  --md-code-bg-color:           #E7E7E2;
+  --md-code-fg-color:           #35342E;
+}
+
+/* violet accent bar under the active nav tab + search focus */
+.md-tabs__link--active,
+.md-nav__link--active { color: var(--v2e-violet-dark); }
+
+/* the wordmark dot vibe: violet selection highlight */
+::selection { background: var(--v2e-violet-dark); color: #212121; }
