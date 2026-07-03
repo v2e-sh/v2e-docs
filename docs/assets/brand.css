@@ -1,24 +1,45 @@
-/* v2e.sh brand — muted/earthy dual-mode palette (locked 2026-07-02).
-   Overrides Material's CSS variables so the site matches the logo package.
-   Header is kept a consistent dark neutral in BOTH modes so the single
-   light-ink lockup (logo-header.svg) reads everywhere; the body flips. */
+/* ============================================================================
+   v2e.sh brand stylesheet — muted/earthy dual-mode palette (locked 2026-07-02)
+   Weaves the brand palette through the whole Material theme: header, prose,
+   tables, admonitions, and a full terminal-style syntax theme for code blocks.
+   Aesthetic: terminal/cyberpunk with Gruvbox/Everforest restraint — not neon.
+   ========================================================================== */
 
 :root {
-  --v2e-violet-dark:  #9184B0;
-  --v2e-violet-light: #6E6191;
-  /* header (both schemes) */
-  --v2e-header-bg:    #212121;
-  --v2e-header-fg:    #DBD7CF;
+  /* hero */
+  --v2e-violet:        #9184B0;   /* dark-mode hero */
+  --v2e-violet-l:      #6E6191;   /* light-mode hero */
+  /* supporting (dark / light) — the ANSI-style accent set */
+  --v2e-teal:   #7A9E97;  --v2e-teal-l:  #456B62;
+  --v2e-blue:   #7C97B8;  --v2e-blue-l:  #4F6B8E;
+  --v2e-amber:  #C1A56E;  --v2e-amber-l: #7C6437;
+  --v2e-green:  #8DA678;  --v2e-green-l: #536E44;
+  --v2e-red:    #BC7C7C;  --v2e-red-l:   #9A5757;
+  /* header is a constant dark neutral in both modes so the light-ink lockup reads */
+  --v2e-header-bg: #1c1c1c;
+  --v2e-header-fg: #DBD7CF;
 }
 
-/* --- header + tabs: dark neutral in both modes, violet accent underline --- */
-.md-header,
-.md-tabs {
+/* ------------------------------------------------------------------ header */
+.md-header {
   background-color: var(--v2e-header-bg);
   color: var(--v2e-header-fg);
+  box-shadow: 0 0 0 0 transparent, 0 2px 0 0 color-mix(in srgb, var(--v2e-violet) 28%, transparent);
 }
+.md-tabs { background-color: var(--v2e-header-bg); color: var(--v2e-header-fg); }
+.md-header__title { font-weight: 600; letter-spacing: -0.01em; }
+/* violet underline grows under the active/hovered top tab */
+.md-tabs__link { opacity: 0.72; transition: opacity .2s, color .2s; }
+.md-tabs__link:hover,
+.md-tabs__link--active { opacity: 1; }
+.md-tabs__item--active .md-tabs__link { box-shadow: inset 0 -2px 0 var(--v2e-violet); }
+/* search box in the dark header */
+.md-search__form { background-color: #2A2A2A; }
+.md-search__form:hover { background-color: #333; }
 
-/* ---------------------------- DARK (slate) ---------------------------- */
+/* ============================================================================
+   DARK  (slate)
+   ========================================================================== */
 [data-md-color-scheme="slate"] {
   --md-hue: 0;
   --md-primary-fg-color:        #2A2A2A;
@@ -27,25 +48,32 @@
   --md-primary-bg-color:        #DBD7CF;
   --md-primary-bg-color--light: #918981;
 
-  --md-accent-fg-color:         var(--v2e-violet-dark);
-  --md-accent-fg-color--transparent: #9184b01a;
+  --md-accent-fg-color:         var(--v2e-violet);
+  --md-accent-fg-color--transparent: #9184b01f;
 
   --md-default-bg-color:        #212121;
   --md-default-fg-color:        #DBD7CF;
-  --md-default-fg-color--light: #918981;
-  --md-default-fg-color--lighter: #6b6962;
+  --md-default-fg-color--light: #a8a29a;
+  --md-default-fg-color--lighter: #918981;
+  --md-default-fg-color--lightest: #363636;
 
   --md-typeset-color:           #DBD7CF;
-  --md-typeset-a-color:         var(--v2e-violet-dark);
+  --md-typeset-a-color:         var(--v2e-violet);
+  --md-typeset-mark-color:      #9184b038;
 
   --md-code-bg-color:           #1A1A1A;
-  --md-code-fg-color:           #DBD7CF;
+  --md-code-fg-color:           #cfcbc2;
 
   --md-footer-bg-color:         #1A1A1A;
   --md-footer-bg-color--dark:   #161616;
+
+  --v2e-rule: #333;
+  --v2e-panel: #2A2A2A;
 }
 
-/* --------------------------- LIGHT (default) --------------------------- */
+/* ============================================================================
+   LIGHT  (default)
+   ========================================================================== */
 [data-md-color-scheme="default"] {
   --md-primary-fg-color:        #F9F9F7;
   --md-primary-fg-color--light: #F1F1EE;
@@ -53,23 +81,273 @@
   --md-primary-bg-color:        #35342E;
   --md-primary-bg-color--light: #6B6962;
 
-  --md-accent-fg-color:         var(--v2e-violet-light);
-  --md-accent-fg-color--transparent: #6e61911a;
+  --md-accent-fg-color:         var(--v2e-violet-l);
+  --md-accent-fg-color--transparent: #6e619118;
 
   --md-default-bg-color:        #F1F1EE;
   --md-default-fg-color:        #35342E;
   --md-default-fg-color--light: #6B6962;
+  --md-default-fg-color--lighter: #8a887f;
 
   --md-typeset-color:           #35342E;
-  --md-typeset-a-color:         var(--v2e-violet-light);
+  --md-typeset-a-color:         var(--v2e-violet-l);
+  --md-typeset-mark-color:      #6e619122;
 
   --md-code-bg-color:           #E7E7E2;
   --md-code-fg-color:           #35342E;
+
+  /* re-point the supporting palette to the light-mode ink for prose/syntax */
+  --v2e-violet:  var(--v2e-violet-l);
+  --v2e-teal:    var(--v2e-teal-l);
+  --v2e-blue:    var(--v2e-blue-l);
+  --v2e-amber:   var(--v2e-amber-l);
+  --v2e-green:   var(--v2e-green-l);
+  --v2e-red:     var(--v2e-red-l);
+
+  --v2e-rule: #dedcd6;
+  --v2e-panel: #F9F9F7;
 }
 
-/* violet accent bar under the active nav tab + search focus */
-.md-tabs__link--active,
-.md-nav__link--active { color: var(--v2e-violet-dark); }
+/* ============================================================================
+   PROSE  — headings, links, rules, quotes, the wordmark-dot motif
+   ========================================================================== */
+.md-typeset h1 {
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  color: var(--md-typeset-color);
+}
+/* h2 gets the "wordmark dot" — and the dot CYCLES through the full accent palette
+   down the page, so every supporting color appears as a section marker. */
+.md-typeset h2 {
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  padding-bottom: .25rem;
+  border-bottom: 1px solid var(--v2e-rule);
+}
+.md-typeset h2::before {
+  content: "";
+  display: inline-block;
+  width: .5em; height: .5em;
+  margin-right: .5em;
+  vertical-align: 0.08em;
+  background: var(--v2e-violet);
+  border-radius: 1px;
+}
+.md-typeset h2:nth-of-type(5n+1)::before { background: var(--v2e-violet); }
+.md-typeset h2:nth-of-type(5n+2)::before { background: var(--v2e-teal); }
+.md-typeset h2:nth-of-type(5n+3)::before { background: var(--v2e-blue); }
+.md-typeset h2:nth-of-type(5n+4)::before { background: var(--v2e-amber); }
+.md-typeset h2:nth-of-type(5n)::before   { background: var(--v2e-green); }
 
-/* the wordmark dot vibe: violet selection highlight */
-::selection { background: var(--v2e-violet-dark); color: #212121; }
+/* h3 gets a small teal left-tick as a secondary accent */
+.md-typeset h3 {
+  font-weight: 600;
+  padding-left: .6em;
+  border-left: 2px solid color-mix(in srgb, var(--v2e-teal) 70%, var(--v2e-rule));
+  color: color-mix(in srgb, var(--md-typeset-color) 92%, var(--v2e-teal));
+}
+
+.md-typeset a { text-decoration-color: color-mix(in srgb, var(--md-typeset-a-color) 45%, transparent); }
+.md-typeset a:hover { text-decoration-color: currentColor; }
+
+/* horizontal rule — a subtle multi-accent gradient across the palette */
+.md-typeset hr {
+  border: none;
+  height: 2px;
+  background: linear-gradient(90deg,
+    var(--v2e-violet), var(--v2e-teal) 22%, var(--v2e-blue) 42%,
+    var(--v2e-amber) 60%, var(--v2e-rule) 78%, transparent);
+  opacity: .5;
+}
+
+/* blockquote with a blue spine */
+.md-typeset blockquote {
+  border-left: 3px solid var(--v2e-blue);
+  color: var(--md-default-fg-color--light);
+}
+
+/* keyboard keys in amber */
+.md-typeset kbd {
+  background: color-mix(in srgb, var(--v2e-amber) 14%, var(--md-code-bg-color));
+  border-color: color-mix(in srgb, var(--v2e-amber) 40%, transparent);
+  box-shadow: 0 2px 0 color-mix(in srgb, var(--v2e-amber) 25%, transparent);
+  color: color-mix(in srgb, var(--md-code-fg-color) 82%, var(--v2e-amber));
+}
+
+/* active table-of-contents link picks up the house violet with a left marker */
+.md-nav--secondary .md-nav__link--active { color: var(--v2e-violet); }
+
+/* strong text picks up a touch of warmth */
+.md-typeset strong { color: color-mix(in srgb, var(--md-typeset-color) 100%, transparent); font-weight: 650; }
+
+/* nav: active item + hover in violet */
+.md-nav__link:hover { color: var(--v2e-violet); }
+.md-nav__link--active,
+.md-nav__item .md-nav__link--active { color: var(--v2e-violet); font-weight: 600; }
+.md-nav__title { color: var(--md-default-fg-color--light); }
+
+/* ============================================================================
+   INLINE CODE  — violet-tinted chip
+   ========================================================================== */
+.md-typeset code:not(.md-code__content) {
+  letter-spacing: -0.02em;
+  font-size: .82em;
+}
+.md-typeset :not(pre) > code {
+  background: color-mix(in srgb, var(--v2e-violet) 12%, var(--md-code-bg-color));
+  color: color-mix(in srgb, var(--md-code-fg-color) 88%, var(--v2e-violet));
+  border: 1px solid color-mix(in srgb, var(--v2e-violet) 18%, transparent);
+  border-radius: 4px;
+  padding: .1em .35em;
+}
+
+/* ============================================================================
+   CODE BLOCKS  — terminal-style syntax theme mapped to the brand ANSI palette
+   ========================================================================== */
+.md-typeset pre > code {
+  font-size: .76rem;
+  line-height: 1.6;
+  letter-spacing: -0.015em;
+}
+/* ONE card only — border on the outer .highlight container; the inner <pre>/<code>
+   carry no border of their own (that double-border was the "block within a block"). */
+.md-typeset .highlight {
+  border-radius: 6px;
+  border: 1px solid var(--v2e-rule);
+  border-left: 3px solid color-mix(in srgb, var(--v2e-violet) 55%, var(--v2e-rule));
+  overflow: hidden;
+}
+.md-typeset .highlight > pre,
+.md-typeset .highlight > pre > code,
+.md-typeset pre > code { border: 0; margin: 0; }
+.highlight [data-linenos]::before { color: var(--md-default-fg-color--lightest); }
+.md-typeset .highlight .hll { background: color-mix(in srgb, var(--v2e-amber) 18%, transparent); }
+/* copy button + language label in violet on hover */
+.md-clipboard:hover { color: var(--v2e-violet); }
+
+/* --- Pygments token → brand color mapping (applies in both schemes; the
+       light scheme re-points the --v2e-* vars to the light ink above) --- */
+.highlight .c,  .highlight .ch, .highlight .cm, .highlight .cp,
+.highlight .cpf,.highlight .c1, .highlight .cs { color: var(--md-default-fg-color--lighter); font-style: italic; }   /* comments */
+
+.highlight .k,  .highlight .kd, .highlight .kn, .highlight .kp,
+.highlight .kr { color: var(--v2e-violet); }                                                                          /* keywords */
+.highlight .kc, .highlight .kt { color: var(--v2e-amber); }                                                           /* constants / types (true/false/null) */
+
+.highlight .s,  .highlight .sa, .highlight .sb, .highlight .sc, .highlight .dl,
+.highlight .sd, .highlight .s2, .highlight .se, .highlight .sh, .highlight .si,
+.highlight .sx, .highlight .sr, .highlight .s1, .highlight .ss { color: var(--v2e-green); }                           /* strings */
+
+.highlight .m,  .highlight .mb, .highlight .mf, .highlight .mh, .highlight .mi,
+.highlight .il, .highlight .mo { color: var(--v2e-amber); }                                                           /* numbers */
+
+.highlight .nf, .highlight .fm { color: var(--v2e-blue); }                                                            /* function names */
+.highlight .nb, .highlight .bp { color: var(--v2e-teal); }                                                            /* builtins */
+.highlight .nc, .highlight .ne, .highlight .nn, .highlight .nd { color: var(--v2e-teal); }                            /* classes / decorators */
+.highlight .na, .highlight .nt { color: var(--v2e-teal); }                                                            /* attributes / YAML keys / tags */
+.highlight .nv, .highlight .vc, .highlight .vg, .highlight .vi { color: var(--v2e-blue); }                            /* variables */
+.highlight .no, .highlight .nl { color: var(--v2e-amber); }                                                           /* constants / labels */
+
+.highlight .o, .highlight .ow { color: color-mix(in srgb, var(--md-code-fg-color) 70%, var(--v2e-violet)); }          /* operators */
+.highlight .p { color: var(--md-default-fg-color--light); }                                                           /* punctuation */
+
+.highlight .gp { color: var(--v2e-violet); user-select: none; }                                                       /* shell prompt $ */
+.highlight .gi { color: var(--v2e-green); background: color-mix(in srgb, var(--v2e-green) 12%, transparent); }        /* diff + */
+.highlight .gd { color: var(--v2e-red);   background: color-mix(in srgb, var(--v2e-red) 12%, transparent); }          /* diff - */
+.highlight .gh, .highlight .gu { color: var(--v2e-violet); font-weight: 600; }                                        /* generic headings */
+.highlight .err { color: var(--v2e-red); background: transparent; }                                                   /* errors */
+
+/* ============================================================================
+   ADMONITIONS  — each type painted from the palette
+   ========================================================================== */
+.md-typeset .admonition,
+.md-typeset details {
+  border-radius: 6px;
+  border-left-width: 3px;
+  font-size: .74rem;
+  background: color-mix(in srgb, var(--v2e-panel) 60%, var(--md-default-bg-color));
+}
+/* note / abstract → blue */
+.md-typeset .admonition.note,      .md-typeset details.note      { border-color: var(--v2e-blue); }
+.md-typeset .note      > .admonition-title,  .md-typeset .note      > summary { background: color-mix(in srgb, var(--v2e-blue) 14%, transparent); }
+.md-typeset .note      > .admonition-title::before, .md-typeset .note > summary::before { background-color: var(--v2e-blue); }
+/* tip / hint / success → teal-green */
+.md-typeset .admonition.tip, .md-typeset .admonition.success, .md-typeset details.tip { border-color: var(--v2e-teal); }
+.md-typeset .tip > .admonition-title, .md-typeset .success > .admonition-title,
+.md-typeset .tip > summary { background: color-mix(in srgb, var(--v2e-teal) 14%, transparent); }
+.md-typeset .tip > .admonition-title::before, .md-typeset .success > .admonition-title::before { background-color: var(--v2e-teal); }
+/* warning → amber */
+.md-typeset .admonition.warning, .md-typeset details.warning { border-color: var(--v2e-amber); }
+.md-typeset .warning > .admonition-title, .md-typeset .warning > summary { background: color-mix(in srgb, var(--v2e-amber) 14%, transparent); }
+.md-typeset .warning > .admonition-title::before { background-color: var(--v2e-amber); }
+/* danger / bug / failure → red */
+.md-typeset .admonition.danger, .md-typeset .admonition.bug, .md-typeset .admonition.failure { border-color: var(--v2e-red); }
+.md-typeset .danger > .admonition-title, .md-typeset .bug > .admonition-title, .md-typeset .failure > .admonition-title { background: color-mix(in srgb, var(--v2e-red) 14%, transparent); }
+.md-typeset .danger > .admonition-title::before { background-color: var(--v2e-red); }
+/* info / example / quote → violet (house color) */
+.md-typeset .admonition.info, .md-typeset .admonition.example, .md-typeset .admonition.quote,
+.md-typeset details.info, .md-typeset details.example { border-color: var(--v2e-violet); }
+.md-typeset .info > .admonition-title, .md-typeset .example > .admonition-title, .md-typeset .quote > .admonition-title,
+.md-typeset .info > summary, .md-typeset .example > summary { background: color-mix(in srgb, var(--v2e-violet) 14%, transparent); }
+.md-typeset .info > .admonition-title::before, .md-typeset .example > .admonition-title::before { background-color: var(--v2e-violet); }
+
+/* ============================================================================
+   TABLES  — tinted header, hairline borders, row hover
+   ========================================================================== */
+.md-typeset table:not([class]) {
+  border: 1px solid var(--v2e-rule);
+  border-radius: 6px;
+  font-size: .74rem;
+}
+.md-typeset table:not([class]) th {
+  background: color-mix(in srgb, var(--v2e-violet) 12%, var(--v2e-panel));
+  color: var(--md-typeset-color);
+  font-weight: 600;
+  border-bottom: 2px solid color-mix(in srgb, var(--v2e-violet) 40%, var(--v2e-rule));
+}
+.md-typeset table:not([class]) td { border-top: 1px solid var(--v2e-rule); }
+.md-typeset table:not([class]) tr:hover td { background: color-mix(in srgb, var(--v2e-violet) 6%, transparent); }
+
+/* ============================================================================
+   GRID CARDS  (landing page) — bordered cards, hover lift, palette-cycled icons
+   ========================================================================== */
+.md-typeset .grid.cards > ul > li {
+  border: 1px solid var(--v2e-rule);
+  border-radius: 8px;
+  padding: 1rem 1.1rem;
+  transition: border-color .2s ease, box-shadow .2s ease, transform .2s ease;
+}
+.md-typeset .grid.cards > ul > li:hover {
+  border-color: color-mix(in srgb, var(--v2e-violet) 70%, var(--v2e-rule));
+  box-shadow: 0 4px 18px -6px color-mix(in srgb, var(--v2e-violet) 45%, transparent);
+  transform: translateY(-2px);
+}
+.md-typeset .grid.cards > ul > li > hr {
+  margin: .6em 0;
+  height: 1px;
+  opacity: .6;
+}
+/* the card icon inherits an accent, cycled across the grid so all colors show */
+.md-typeset .grid.cards > ul > li .twemoji svg { transition: fill .2s; }
+.md-typeset .grid.cards > ul > li:nth-child(5n+1) .twemoji svg { fill: var(--v2e-violet); }
+.md-typeset .grid.cards > ul > li:nth-child(5n+2) .twemoji svg { fill: var(--v2e-teal); }
+.md-typeset .grid.cards > ul > li:nth-child(5n+3) .twemoji svg { fill: var(--v2e-blue); }
+.md-typeset .grid.cards > ul > li:nth-child(5n+4) .twemoji svg { fill: var(--v2e-amber); }
+.md-typeset .grid.cards > ul > li:nth-child(5n)   .twemoji svg { fill: var(--v2e-green); }
+/* inline icons in prose/tables inherit the text-ish muted tone unless in a card */
+.md-typeset .md-typeset__table .twemoji svg,
+.md-typeset table .twemoji svg { fill: var(--v2e-violet); }
+
+/* ============================================================================
+   MISC  — selection, focus, footer, scrollbar
+   ========================================================================== */
+::selection { background: var(--v2e-violet); color: #1A1A1A; }
+.md-typeset .md-button--primary {
+  background: var(--v2e-violet);
+  border-color: var(--v2e-violet);
+  color: #1A1A1A;
+}
+.md-typeset .md-button--primary:hover {
+  background: color-mix(in srgb, var(--v2e-violet) 82%, #fff);
+  border-color: color-mix(in srgb, var(--v2e-violet) 82%, #fff);
+}
