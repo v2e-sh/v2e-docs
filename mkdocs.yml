@@ -1,4 +1,4 @@
-site_name: v2e — Lab Documentation
+site_name: v2e.sh — Lab Documentation
 site_description: Deploy and operate the v2e homelab (Proxmox · VyOS · OpenTofu · Ansible · Docker)
 site_url: https://v2e-sh.github.io/v2e-docs/
 repo_url: https://github.com/v2e-sh/v2e-docs
@@ -32,18 +32,20 @@ nav:
 
 theme:
   name: material
+  custom_dir: overrides
+  logo: assets/brand/logo-header.svg
+  favicon: assets/brand/favicon.svg
+  font:
+    text: Inter
+    code: Martian Mono
   palette:
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
-      primary: teal
-      accent: teal
       toggle:
         icon: material/weather-sunny
         name: Light mode
     - media: "(prefers-color-scheme: light)"
       scheme: default
-      primary: teal
-      accent: teal
       toggle:
         icon: material/weather-night
         name: Dark mode
@@ -56,6 +58,9 @@ theme:
     - search.suggest
     - search.highlight
     - content.code.copy
+
+extra_css:
+  - assets/brand.css
 
 plugins:
   - search
