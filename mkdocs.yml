@@ -11,7 +11,7 @@ edit_uri: edit/main/
 # not linked — they are not part of the site.
 
 nav:
-  - Home: README.md
+  - Home: index.md
   - Runbook: RUNBOOK.md
   - Configuration reference: CONFIGURATION.md
   - System:
@@ -68,9 +68,13 @@ plugins:
 markdown_extensions:
   - admonition
   - attr_list
+  - md_in_html
   - tables
   - toc:
       permalink: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
   - pymdownx.details
   - pymdownx.highlight:
       anchor_linenums: true

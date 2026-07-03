@@ -309,6 +309,36 @@
 .md-typeset table:not([class]) tr:hover td { background: color-mix(in srgb, var(--v2e-violet) 6%, transparent); }
 
 /* ============================================================================
+   GRID CARDS  (landing page) — bordered cards, hover lift, palette-cycled icons
+   ========================================================================== */
+.md-typeset .grid.cards > ul > li {
+  border: 1px solid var(--v2e-rule);
+  border-radius: 8px;
+  padding: 1rem 1.1rem;
+  transition: border-color .2s ease, box-shadow .2s ease, transform .2s ease;
+}
+.md-typeset .grid.cards > ul > li:hover {
+  border-color: color-mix(in srgb, var(--v2e-violet) 70%, var(--v2e-rule));
+  box-shadow: 0 4px 18px -6px color-mix(in srgb, var(--v2e-violet) 45%, transparent);
+  transform: translateY(-2px);
+}
+.md-typeset .grid.cards > ul > li > hr {
+  margin: .6em 0;
+  height: 1px;
+  opacity: .6;
+}
+/* the card icon inherits an accent, cycled across the grid so all colors show */
+.md-typeset .grid.cards > ul > li .twemoji svg { transition: fill .2s; }
+.md-typeset .grid.cards > ul > li:nth-child(5n+1) .twemoji svg { fill: var(--v2e-violet); }
+.md-typeset .grid.cards > ul > li:nth-child(5n+2) .twemoji svg { fill: var(--v2e-teal); }
+.md-typeset .grid.cards > ul > li:nth-child(5n+3) .twemoji svg { fill: var(--v2e-blue); }
+.md-typeset .grid.cards > ul > li:nth-child(5n+4) .twemoji svg { fill: var(--v2e-amber); }
+.md-typeset .grid.cards > ul > li:nth-child(5n)   .twemoji svg { fill: var(--v2e-green); }
+/* inline icons in prose/tables inherit the text-ish muted tone unless in a card */
+.md-typeset .md-typeset__table .twemoji svg,
+.md-typeset table .twemoji svg { fill: var(--v2e-violet); }
+
+/* ============================================================================
    MISC  — selection, focus, footer, scrollbar
    ========================================================================== */
 ::selection { background: var(--v2e-violet); color: #1A1A1A; }
