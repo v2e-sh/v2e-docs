@@ -12,7 +12,7 @@
     {
       "description": "Track the mkdocs-material pin in the Pages workflow (a pip install line, not a requirements file). GitHub Actions versions are tracked natively by the github-actions manager.",
       "customType": "regex",
-      "fileMatch": ["^\\.github/workflows/docs\\.yml$"],
+      "managerFilePatterns": ["/^\\.github/workflows/docs\\.yml$/"],
       "matchStrings": ["mkdocs-material==(?<currentValue>[^\\s\"']+)"],
       "datasourceTemplate": "pypi",
       "depNameTemplate": "mkdocs-material"
