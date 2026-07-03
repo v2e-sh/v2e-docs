@@ -1,5 +1,11 @@
 # COMPOSE-2 — Auth (TinyAuth forward-auth) — Design Spec
 
+!!! note "Historical design spec"
+    This records the original design. The internal application domain was finalized
+    as **`*.int.v2e.sh`** (the bare `v2e.sh` is the public zone, used only for ACME
+    and email). Hostnames here have been corrected to `int.v2e.sh`; the current,
+    authoritative reference is the [Application estate](../system/applications.md) page.
+
 **Date:** 2026-06-30
 **Phase:** COMPOSE-2 — see `MASTER-PLAN.md` §5
 **Branch:** `feat/compose-auth` · **Integration:** feature branch → **PR** (the `main` ruleset requires PRs)
@@ -21,7 +27,7 @@
 ## 1. Goal
 
 Add a **TinyAuth forward-auth** layer to the shipped stack: bring the Traefik **dashboard**
-up on `traefik.v2e.sh` **behind authentication**, protect it, leave `whoami` **public** as
+up on `traefik.int.v2e.sh` **behind authentication**, protect it, leave `whoami` **public** as
 the untouched-open-route proof, and keep the middleware layer **backend-neutral** so a later
 swap to Authelia + Valkey is a service swap, not a rebuild. This is the master plan's **Q3**
 decision (TinyAuth: stateless cookie, no session backend) realised as a Traefik middleware.
@@ -32,9 +38,9 @@ decision (TinyAuth: stateless cookie, no session backend) realised as a Traefik 
 
 **In scope:**
 
-- A `tinyauth/` stack: the TinyAuth service (login UI on a **public** `tinyauth.v2e.sh`
+- A `tinyauth/` stack: the TinyAuth service (login UI on a **public** `tinyauth.int.v2e.sh`
   router) and the forward-auth middleware definition.
-- Bring up the Traefik **dashboard** (`--api.dashboard=true`) on `traefik.v2e.sh`, behind
+- Bring up the Traefik **dashboard** (`--api.dashboard=true`) on `traefik.int.v2e.sh`, behind
   the auth middleware + the existing `secure-headers` middleware.
 - **Move the wildcard `tls.domains` anchor** from the `whoami` router onto the (permanent)
   dashboard router.
@@ -102,29 +108,29 @@ existing `DOMAIN`).
 
 ```
 tinyauth  (frontend, :3000)
-  ├─ public router  Host(tinyauth.v2e.sh) · websecure · tls   → login UI (NOT behind auth)
+  ├─ public router  Host(tinyauth.int.v2e.sh) · websecure · tls   → login UI (NOT behind auth)
   └─ defines middleware  auth@docker
         forwardauth.address=http://tinyauth:3000/api/auth/traefik
         forwardauth.authResponseHeaders=Remote-User,Remote-Groups,Remote-Email,Remote-Name
 
-traefik dashboard  Host(traefik.v2e.sh) · websecure · service=api@internal
+traefik dashboard  Host(traefik.int.v2e.sh) · websecure · service=api@internal
         middlewares=auth@docker,secure-headers@docker
         tls.certResolver=${CERT_RESOLVER} · tls.domains: main=${DOMAIN}, sans=*.${DOMAIN}   ← wildcard anchor
 
-whoami   Host(whoami.v2e.sh) · websecure · tls=true · secure-headers · NO auth middleware   ← public
+whoami   Host(whoami.int.v2e.sh) · websecure · tls=true · secure-headers · NO auth middleware   ← public
 ```
 
-**Protected flow:** request `traefik.v2e.sh` → Traefik → `auth` middleware → TinyAuth
-`/api/auth/traefik`. No valid cookie → 302 to `tinyauth.v2e.sh` login → user signs in →
+**Protected flow:** request `traefik.int.v2e.sh` → Traefik → `auth` middleware → TinyAuth
+`/api/auth/traefik`. No valid cookie → 302 to `tinyauth.int.v2e.sh` login → user signs in →
 TinyAuth sets the session cookie on the **parent domain `.v2e.sh`** → back to the dashboard.
 
 **SSO:** because the cookie is on `.v2e.sh`, one login covers **every** protected
 `*.v2e.sh` subdomain — COMPOSE-3's Semaphore/Dockge inherit it by just adding
 `middlewares=auth@docker`.
 
-**Public flow:** `whoami.v2e.sh` has no auth middleware → served directly, no prompt.
+**Public flow:** `whoami.int.v2e.sh` has no auth middleware → served directly, no prompt.
 
-**Login page is public by necessity** — `tinyauth.v2e.sh` carries no `auth` middleware (it
+**Login page is public by necessity** — `tinyauth.int.v2e.sh` carries no `auth` middleware (it
 cannot gate its own login).
 
 ---
@@ -186,9 +192,9 @@ comments.
 whoami) with dummy env; `make validate` and the CI workflow both cover tinyauth.
 
 **Live (run on a Docker host with the real token + user):**
-1. `traefik.v2e.sh` → redirected to the TinyAuth login → **wrong** creds rejected → **valid**
+1. `traefik.int.v2e.sh` → redirected to the TinyAuth login → **wrong** creds rejected → **valid**
    creds → dashboard loads.
-2. `whoami.v2e.sh` → loads with **no** prompt (public).
+2. `whoami.int.v2e.sh` → loads with **no** prompt (public).
 3. A second protected `*.v2e.sh` (or re-hitting the dashboard in a new tab) → **no** re-login
    (the `.v2e.sh` SSO cookie).
 
@@ -199,7 +205,7 @@ users; unprotected routes unaffected.
 
 ## 10. Gotchas (→ README)
 
-- **The login host is public.** `tinyauth.v2e.sh` must NOT carry the `auth` middleware, or
+- **The login host is public.** `tinyauth.int.v2e.sh` must NOT carry the `auth` middleware, or
   login becomes an infinite redirect.
 - **Cookie parent-domain / SSO** depends on all services sharing `*.v2e.sh`. A bare DDNS
   host without real subdomains breaks the shared cookie (TinyAuth doc caveat).

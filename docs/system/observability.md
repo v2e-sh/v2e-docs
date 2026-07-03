@@ -47,10 +47,10 @@ flowchart LR
       cad[cAdvisor]
       kuma[Uptime Kuma]
     end
-    ne[node-exporter\nhost network]
-    dsock[/var/run/docker.sock/]
+    ne[node-exporter<br/>host network]
+    dsock["/var/run/docker.sock"]
   end
-  traefik[Traefik :8082\nmetrics entrypoint]
+  traefik[Traefik :8082<br/>metrics entrypoint]
 
   ne -->|:9100 via host-gateway| prom
   cad -->|:8080| prom
@@ -112,9 +112,9 @@ pipeline in `config/config.alloy` is intentionally simple.
 
 ```mermaid
 flowchart LR
-  d[discovery.docker\nrefresh 30s] --> r[discovery.relabel\nstrip leading /]
-  r --> s[loki.source.docker\njob=docker]
-  s --> w[loki.write\nhttp://loki:3100]
+  d[discovery.docker<br/>refresh 30s] --> r[discovery.relabel<br/>strip leading /]
+  r --> s[loki.source.docker<br/>job=docker]
+  s --> w[loki.write<br/>http://loki:3100]
 ```
 
 A relabel rule strips Docker's leading `/` from container names and writes the result to

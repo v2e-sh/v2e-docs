@@ -1,5 +1,12 @@
 # COMPOSE-1 — Traefik v3 + Cloudflare DNS-01 + Wildcard HTTPS — Design Spec
 
+!!! note "Historical design spec"
+    This records the original design. The internal application domain was finalized
+    as **`*.int.v2e.sh`** (the bare `v2e.sh` is the public zone, used only for the
+    ACME DNS-01 challenge and email). App hostnames here have been corrected to
+    `int.v2e.sh`; the current, authoritative reference is the
+    [Application estate](../system/applications.md) page.
+
 **Date:** 2026-06-30
 **Phase:** COMPOSE-1 — see `MASTER-PLAN.md` §5
 **Branch:** `feat/compose-traefik-tls`
@@ -160,7 +167,7 @@ for tfstate.)
 **Request flow**
 
 ```
-client ──:443──► Traefik (websecure) ──Host(whoami.v2e.sh)──► whoami:80   (frontend)
+client ──:443──► Traefik (websecure) ──Host(whoami.int.v2e.sh)──► whoami:80   (frontend)
 client ──:80───► Traefik (web) ──301 permanent──► websecure
 ```
 
@@ -423,7 +430,7 @@ with production.
   **DNS-only (gray cloud)** — orange-cloud serves Cloudflare's edge cert, not the LE cert,
   and cannot reach a private IP. The `lab.v2e.sh` tunnel record stays proxied (a different
   record). DNS-01 itself needs no public record for the cert.
-- **Local testing without a public record.** Point `whoami.v2e.sh` at the Docker host via
+- **Local testing without a public record.** Point `whoami.int.v2e.sh` at the Docker host via
   `/etc/hosts` to exercise the cert path; the wildcard still validates over DNS-01.
 - **DNS-01 resolvers pinned** to `1.1.1.1:53,1.0.0.1:53` so the ACME propagation pre-check
   doesn't consult a split-horizon/internal resolver that returns the wrong TXT.
@@ -453,10 +460,10 @@ host, e.g. via `make`):**
 
 1. `make bootstrap`; fill `.env` + token; `make up` (staging).
 2. `make logs` shows the `staging` resolver complete a DNS-01 order with no errors.
-3. `curl -vk https://whoami.v2e.sh` (host resolves via `/etc/hosts` if needed) → whoami
+3. `curl -vk https://whoami.int.v2e.sh` (host resolves via `/etc/hosts` if needed) → whoami
    body; certificate issuer is **(STAGING) Let's Encrypt**.
-4. `curl -I http://whoami.v2e.sh` → `301` to `https://`.
-5. `make prod`; re-check `curl -v https://whoami.v2e.sh` (no `-k`) → succeeds with a real
+4. `curl -I http://whoami.int.v2e.sh` → `301` to `https://`.
+5. `make prod`; re-check `curl -v https://whoami.int.v2e.sh` (no `-k`) → succeeds with a real
    Let's Encrypt issuer.
 
 **Acceptance (from MASTER-PLAN §5):** Traefik pulls a valid wildcard LE cert

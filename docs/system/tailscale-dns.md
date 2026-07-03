@@ -15,15 +15,15 @@ so they never hold a tailnet identity of their own.
 
 ```mermaid
 flowchart LR
-    mac["workstation (tailnet client)\nsplit-DNS + exit-node picker"]
+    mac["workstation (tailnet client)<br/>split-DNS + exit-node picker"]
 
     subgraph tailnet["Tailnet (100.64.0.0/10)"]
-      control["control\nsubnet router\nadvertises 10.1.0.0/16"]
-      infra["infra\nhome exit node\n+ Technitium DNS\n+ mullvad-exit stack"]
+      control["control<br/>subnet router<br/>advertises 10.1.0.0/16"]
+      infra["infra<br/>home exit node<br/>+ Technitium DNS<br/>+ mullvad-exit stack"]
     end
 
     subgraph lab["Lab supernet 10.1.0.0/16 (behind control)"]
-      services["services 10.1.2.10\nTraefik *.int.v2e.sh"]
+      services["services 10.1.2.10<br/>Traefik *.int.v2e.sh"]
       agent["agent 10.1.3.10"]
       vyos["router 10.1.1.1"]
     end
@@ -102,14 +102,14 @@ flowchart TB
     pick --> mv
 
     subgraph infra["infra node"]
-      home["home\n(host tailscaled)\nadvertise-exit-node\nkernel IP forwarding"]
+      home["home<br/>(host tailscaled)<br/>advertise-exit-node<br/>kernel IP forwarding"]
       subgraph stack["mullvad-exit stack (Docker)"]
-        gluetun["gluetun\nMullvad WireGuard\n(userspace, own netns)\nkill-switch ON"]
-        ts["tailscale sidecar\nnetwork_mode: service:gluetun\nTS_USERSPACE=false"]
+        gluetun["gluetun<br/>Mullvad WireGuard<br/>(userspace, own netns)<br/>kill-switch ON"]
+        ts["tailscale sidecar<br/>network_mode: service:gluetun<br/>TS_USERSPACE=false"]
       end
     end
 
-    home --> wan["Residential WAN\n(real home IP)"]
+    home --> wan["Residential WAN<br/>(real home IP)"]
     ts -->|shares netns| gluetun
     gluetun --> mullvad["Mullvad WireGuard tunnel"]
 ```
