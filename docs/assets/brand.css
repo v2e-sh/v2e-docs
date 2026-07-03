@@ -350,4 +350,16 @@
 .md-typeset .md-button--primary:hover {
   background: color-mix(in srgb, var(--v2e-violet) 82%, #fff);
   border-color: color-mix(in srgb, var(--v2e-violet) 82%, #fff);
+  color: #1A1A1A;
+}
+/* secondary button — teal accent so it reads clearly next to the violet primary */
+.md-typeset .md-button:not(.md-button--primary) {
+  color: var(--v2e-teal);
+  border-color: var(--v2e-teal);
+  font-weight: 600;
+}
+.md-typeset .md-button:not(.md-button--primary):hover {
+  background: var(--v2e-teal);
+  border-color: var(--v2e-teal);
+  color: #1A1A1A;
 }
