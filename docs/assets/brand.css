@@ -116,7 +116,8 @@
   letter-spacing: -0.015em;
   color: var(--md-typeset-color);
 }
-/* h2 gets the violet "wordmark dot" — a small square block before the title */
+/* h2 gets the "wordmark dot" — and the dot CYCLES through the full accent palette
+   down the page, so every supporting color appears as a section marker. */
 .md-typeset h2 {
   font-weight: 650;
   letter-spacing: -0.01em;
@@ -132,25 +133,49 @@
   background: var(--v2e-violet);
   border-radius: 1px;
 }
-.md-typeset h3 { font-weight: 600; color: color-mix(in srgb, var(--md-typeset-color) 92%, var(--v2e-violet)); }
+.md-typeset h2:nth-of-type(5n+1)::before { background: var(--v2e-violet); }
+.md-typeset h2:nth-of-type(5n+2)::before { background: var(--v2e-teal); }
+.md-typeset h2:nth-of-type(5n+3)::before { background: var(--v2e-blue); }
+.md-typeset h2:nth-of-type(5n+4)::before { background: var(--v2e-amber); }
+.md-typeset h2:nth-of-type(5n)::before   { background: var(--v2e-green); }
+
+/* h3 gets a small teal left-tick as a secondary accent */
+.md-typeset h3 {
+  font-weight: 600;
+  padding-left: .6em;
+  border-left: 2px solid color-mix(in srgb, var(--v2e-teal) 70%, var(--v2e-rule));
+  color: color-mix(in srgb, var(--md-typeset-color) 92%, var(--v2e-teal));
+}
 
 .md-typeset a { text-decoration-color: color-mix(in srgb, var(--md-typeset-a-color) 45%, transparent); }
 .md-typeset a:hover { text-decoration-color: currentColor; }
 
-/* horizontal rule as a subtle violet-tinted gradient */
+/* horizontal rule — a subtle multi-accent gradient across the palette */
 .md-typeset hr {
   border: none;
-  height: 1px;
+  height: 2px;
   background: linear-gradient(90deg,
-    color-mix(in srgb, var(--v2e-violet) 55%, transparent),
-    var(--v2e-rule) 60%, transparent);
+    var(--v2e-violet), var(--v2e-teal) 22%, var(--v2e-blue) 42%,
+    var(--v2e-amber) 60%, var(--v2e-rule) 78%, transparent);
+  opacity: .5;
 }
 
-/* blockquote with a violet spine */
+/* blockquote with a blue spine */
 .md-typeset blockquote {
-  border-left: 3px solid var(--v2e-violet);
+  border-left: 3px solid var(--v2e-blue);
   color: var(--md-default-fg-color--light);
 }
+
+/* keyboard keys in amber */
+.md-typeset kbd {
+  background: color-mix(in srgb, var(--v2e-amber) 14%, var(--md-code-bg-color));
+  border-color: color-mix(in srgb, var(--v2e-amber) 40%, transparent);
+  box-shadow: 0 2px 0 color-mix(in srgb, var(--v2e-amber) 25%, transparent);
+  color: color-mix(in srgb, var(--md-code-fg-color) 82%, var(--v2e-amber));
+}
+
+/* active table-of-contents link picks up the house violet with a left marker */
+.md-nav--secondary .md-nav__link--active { color: var(--v2e-violet); }
 
 /* strong text picks up a touch of warmth */
 .md-typeset strong { color: color-mix(in srgb, var(--md-typeset-color) 100%, transparent); font-weight: 650; }
@@ -184,12 +209,17 @@
   line-height: 1.6;
   letter-spacing: -0.015em;
 }
-.md-typeset .highlight,
-.md-typeset pre {
+/* ONE card only — border on the outer .highlight container; the inner <pre>/<code>
+   carry no border of their own (that double-border was the "block within a block"). */
+.md-typeset .highlight {
   border-radius: 6px;
   border: 1px solid var(--v2e-rule);
-  border-left: 3px solid color-mix(in srgb, var(--v2e-violet) 60%, var(--v2e-rule));
+  border-left: 3px solid color-mix(in srgb, var(--v2e-violet) 55%, var(--v2e-rule));
+  overflow: hidden;
 }
+.md-typeset .highlight > pre,
+.md-typeset .highlight > pre > code,
+.md-typeset pre > code { border: 0; margin: 0; }
 .highlight [data-linenos]::before { color: var(--md-default-fg-color--lightest); }
 .md-typeset .highlight .hll { background: color-mix(in srgb, var(--v2e-amber) 18%, transparent); }
 /* copy button + language label in violet on hover */
