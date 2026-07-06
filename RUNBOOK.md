@@ -450,6 +450,21 @@ v2e@control:~$ sudo -iu ansible sops -d ~/ansible/group_vars/all.sops.yaml | hea
 - **Browser access to the apps from your machine** requires internal DNS + a route —
   that's Step 8 (Technitium + Tailscale), currently manual.
 
+### Using the installed apps (simple setup)
+
+Once you're on the tailnet with split-DNS (Step 8), the apps are three steps away:
+
+1. **Reach them.** Everything is at `*.int.v2e.sh` (e.g. `https://grafana.int.v2e.sh`),
+   resolvable only over Tailscale. If a name doesn't resolve, check you're not on an
+   exit node that shadows the split-DNS, or add `/etc/resolver/int.v2e.sh` (macOS).
+2. **Log in once at Authelia.** Any app bounces you to `auth.int.v2e.sh`; sign in as
+   `admin`. That one session covers every SSO app — Grafana, Semaphore, Arcane, Traefik,
+   Uptime Kuma, ntfy. (Grafana/Arcane show a "Sign in with Authelia/OIDC" button.)
+3. **The two non-SSO bits:** point the **Bitwarden** client at `https://vault.int.v2e.sh`
+   for the password vault, and subscribe to the ntfy topic **`v2e-alerts`** for alerts.
+
+Full per-app guide (what each app is for, how to log in): **[Using the lab](guides/using-the-apps.md)**.
+
 Sudo as `v2e` prompts for `sudo_password` from Step 2. `root` SSH is disabled
 everywhere; `ansible` is internal-only.
 
