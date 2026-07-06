@@ -52,7 +52,7 @@ flowchart TD
 
     subgraph hosts["compose hosts (services + infra)"]
         envj2["env.j2 → .env (0640 root:docker)"]
-        stacks["docker compose stacks<br/>(traefik, tinyauth, semaphore, technitium, ...)"]
+        stacks["docker compose stacks<br/>(traefik, authelia, semaphore, technitium, ...)"]
         envj2 -->|env_files| stacks
     end
 
@@ -104,22 +104,25 @@ The flow proceeds in six steps.
 `docker compose` performs variable interpolation on the **values** inside an env-file. A literal
 value containing `$` — a bcrypt hash such as `$2a$10$...`, or any random token — is mangled: compose
 reads `$2a` + `$10` + an empty expansion of an unset variable, silently corrupting the secret. The
-canonical symptom is a TinyAuth login that never succeeds.
+canonical symptom is an argon2id/bcrypt password hash that never verifies — historically a TinyAuth
+login that never succeeded, and equally an Authelia admin hash that silently fails first-factor.
 
 The fix lives in `roles/compose_stack/templates/env.j2`: every secret passes through
 `| replace('$', '$$')` so compose restores a single literal `$`.
 
 ```jinja
 CF_DNS_API_TOKEN={{ cf_dns_api_token | default('') | replace('$', '$$') }}
-TINYAUTH_AUTH_USERS={{ tinyauth_auth_users | default('') | replace('$', '$$') }}
+AUTHELIA_SESSION_SECRET={{ authelia_session_secret | default('') | replace('$', '$$') }}
 ```
 
 Two further `env.j2` conventions matter:
 
-- **`default('')` on every secret** keeps the shared template rendering when a stack (semaphore,
-  arcane, technitium, mullvad-exit) is not enabled on a given host. The template renders on every
-  compose host; each stack's own compose guards its required values with `${VAR:?}` at deploy time,
-  so an empty value fails that one stack loudly rather than the whole render.
+- **Per-stack scoping with `default('')`.** Each secret block is wrapped in
+  `{% if '<stack>' in compose_stack_stacks %}`, so a host renders only the secrets for the stacks
+  it actually runs (a services-node secret never lands on the infra `.env`). The `default('')` on
+  every value keeps the render from failing when a variable is absent, and each stack's own compose
+  guards its required values with `${VAR:?}` at deploy time, so an empty value fails that one stack
+  loudly rather than the whole render.
 - **Keys are lowercase in SOPS, `UPPER_CASE` in `.env`.** The Ansible assert checks the exact
   lowercase names; `env.j2` maps them to the compose-side `UPPER_CASE` variables.
 
@@ -138,8 +141,10 @@ those consumed in `env.j2`.
 | In `secrets.sops.yaml` (age-encrypted, lowercase keys) | In `terraform.tfvars` (OpenTofu inputs) |
 |---|---|
 | `cf_dns_api_token` (Traefik ACME DNS-01) | `sops_secrets_file`, `sops_age_key_file` (the two pointers) |
-| `tinyauth_auth_users` | `ansible_vault_password` (control only; intended to be superseded by SOPS) |
-| `semaphore_db_pass`, `semaphore_admin_password`, `semaphore_access_key_encryption`, `semaphore_runner_reg_token` | `root_password` / node passwords |
+| `authelia_session_secret`, `authelia_storage_encryption_key`, `authelia_reset_password_jwt_secret`, `authelia_oidc_hmac_secret` (Authelia core scalars) | `ansible_vault_password` (control only; intended to be superseded by SOPS) |
+| `authelia_oidc_issuer_key` (RS256 PEM), `authelia_admin_password_hash` (argon2id → `users_database.yml`) | `root_password` / node passwords |
+| `authelia_oidc_{arcane,grafana}_client_secret_hash` (pbkdf2, Authelia side), `authelia_oidc_{arcane,grafana}_client_secret` (plaintext, RP side) | |
+| `semaphore_db_pass`, `semaphore_admin_password`, `semaphore_access_key_encryption`, `semaphore_runner_reg_token` | |
 | `arcane_encryption_key`, `arcane_jwt_secret` | `cloudflare_api_token` + account / zone IDs (tunnel) |
 | `grafana_admin_password` | Proxmox connection, node sizing, and networking inputs |
 | `technitium_admin_password` | |
@@ -147,7 +152,9 @@ those consumed in `env.j2`.
 | `tailscale_authkey` (use a **reusable**, not ephemeral, key) | |
 
 The per-host `compose_stack_required_secrets` list drives which keys the Ansible assert enforces: the
-services node requires `cf_dns_api_token` and `tinyauth_auth_users`; the infra node requires
+services node requires `cf_dns_api_token` plus the ten `authelia_*` keys (session/storage/JWT/HMAC
+scalars, the RS256 issuer key, the admin password hash, and the per-client secret hash+plaintext
+pairs — see `group_vars/services.yml`); the infra node requires
 `technitium_admin_password`, `mullvad_wireguard_private_key`, `mullvad_wireguard_addresses`, and
 `tailscale_authkey`.
 
@@ -160,9 +167,11 @@ services node requires `cf_dns_api_token` and `tinyauth_auth_users`; the infra n
     Encrypt `secrets.sops.yaml` to control's public key **and** an offline backup key
     (`--age "<pub1>,<pub2>"`). Under SOPS a lost private key loses every secret.
 
-!!! note "Arcane's first-boot login is not in SOPS"
-    Arcane seeds `admin` / `password` on first boot; change it in the UI immediately. Seeded Arcane
-    credentials are not yet codified in the secret store.
+!!! note "Arcane admin access is via Authelia OIDC"
+    Since the SSO migration, Arcane admin access is granted through Authelia OIDC role mapping
+    (`arcane-admins → role_admin`), not a stored password. The seeded local `admin` login is kept
+    enabled only as break-glass and is not codified in the secret store — disable it in the UI once
+    OIDC-only is proven.
 
 ## File permissions and modes
 

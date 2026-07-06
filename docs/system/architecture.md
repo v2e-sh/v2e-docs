@@ -74,8 +74,8 @@ given a virtio display) rather than a headless cloud image. Its roles:
 
 ### services (Ubuntu, 312)
 
-The Docker application estate, fronted by Traefik and TinyAuth on `int.v2e.sh` with a
-production Let's Encrypt wildcard certificate. It runs the traefik, tinyauth, whoami,
+The Docker application estate, fronted by Traefik and Authelia SSO on `int.v2e.sh` with a
+production Let's Encrypt wildcard certificate. It runs the traefik, authelia, whoami,
 semaphore (with postgres), and arcane stacks, plus observability (prometheus, grafana,
 loki, alloy, uptime-kuma, node-exporter, cadvisor).
 

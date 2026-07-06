@@ -29,7 +29,7 @@ flowchart LR
 | 2. `tofu apply` | operator workstation | OpenTofu + `bpg/proxmox` provider | VyOS router + 4 node VMs + cloud-init snippets |
 | 3. cloud-init | `control` (first boot) | cloud-init | Ansible installed, repo cloned, secrets staged |
 | 4. `site.yml` | `control` | Ansible | hardened nodes, Docker, rendered `.env` files |
-| 5. Stacks | `services` + `infra` | Docker Compose (via `compose_stack`) | Traefik, TinyAuth, observability, DNS and relay containers |
+| 5. Stacks | `services` + `infra` | Docker Compose (via `compose_stack`) | Traefik, Authelia, observability, DNS and relay containers |
 | 6. Post-deploy | Tailscale console + `control` | manual | browser access + RustDesk |
 
 The four templates are built on the Proxmox host by the `build-*.sh` scripts in v2e-templates, which drive `virt-customize` and `qm` directly — there is no Packer and no build network. Their VMIDs are defined in `v2e-templates/config.env`: VyOS (`9900`), Ubuntu 24.04 (`9901`), Debian 13 (`9902`) and Parrot Home (`9903`). These are the staging range; the production range is `9000`–`9003`. `network.tf` maps `control` to the Parrot desktop template, `services` to Ubuntu, and `agent` and `infra` to Debian.
@@ -85,7 +85,7 @@ sequenceDiagram
     A->>L: 01-bootstrap: ping → health_check (gate)
     A->>L: baseline → devsec os/ssh hardening → fail2ban
     A->>S: 02-services: geerlingguy.docker → compose_stack
-    Note over S: Traefik, TinyAuth, whoami,<br/>Semaphore, Arcane, observability<br/>+ DNS-01 wildcard cert
+    Note over S: Traefik, Authelia, whoami,<br/>Semaphore, Arcane, observability<br/>+ DNS-01 wildcard cert
     A->>AG: 03-applications: ai_identities → ai_workbench
     A->>I: 04-infra: docker → pin resolv.conf → free :53<br/>→ compose_stack → technitium_zone
     Note over I: Technitium DNS + RustDesk relay,<br/>int.<domain> zone seeded via API
@@ -97,7 +97,7 @@ sequenceDiagram
 | Phase | Playbook | Hosts | Roles and effect |
 |---|---|---|---|
 | 01 | `01-bootstrap.yml` | `linux` (all 4 nodes) | ping smoke test → `health_check` (fail-fast) → `baseline` → `devsec.hardening` (os + ssh) → `fail2ban` |
-| 02 | `02-services.yml` | `services` | `geerlingguy.docker` → `compose_stack` (Traefik, TinyAuth, whoami, Semaphore, Arcane, observability) |
+| 02 | `02-services.yml` | `services` | `geerlingguy.docker` → `compose_stack` (Traefik, Authelia, whoami, Semaphore, Arcane, observability) |
 | 03 | `03-applications.yml` | `agent` | `ai_identities` → `ai_workbench` (AI-agent accounts and workbench, on the `agent` node only) |
 | 04 | `04-infra.yml` | `infra` | `geerlingguy.docker` → pin `resolv.conf` and free `:53` → `compose_stack` (Technitium, RustDesk relay) → `technitium_zone` (seed `int.<domain>` via API) |
 | 05 | `05-tailscale.yml` | `control:infra` | `tailscale` — `control` becomes the subnet router for `10.1.0.0/16`; `infra` joins directly. Skips gracefully when `tailscale_authkey` is absent |
