@@ -5,10 +5,11 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Least privilege: only the deploy job gets pages/id-token. The build job runs
+# third-party pip code (mkdocs-material + deps) and needs only contents: read, so a
+# compromised build dependency can't publish to Pages or mint an OIDC token.
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
   group: pages
@@ -35,6 +36,9 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
