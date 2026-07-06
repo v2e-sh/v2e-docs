@@ -1,0 +1,99 @@
+# Using the lab
+
+A practical guide to the apps running in the v2e estate — what each one is for, where
+to reach it, and how to log in. For how they're *built*, see
+[Application estate](../system/applications.md).
+
+All apps live on `*.int.v2e.sh` and are internal-only — you reach them over Tailscale,
+never the public internet. See [Simple setup](#simple-setup-first-time-access) below if
+you can't reach them yet.
+
+## How auth works here
+
+Most apps sit behind **Authelia** (single sign-on). You log in **once** at the Authelia
+portal and every forward-auth app trusts that session; the OIDC apps show a "Sign in with
+Authelia" button. Two apps are deliberately different — see their rows.
+
+Admin login for the shared account: user `admin`. (The password is a lab test credential;
+ask the operator, or find it in SOPS. Rotate it before real use.)
+
+## The apps at a glance
+
+| App | URL | What it's for | How you log in |
+|---|---|---|---|
+| **Authelia** | `auth.int.v2e.sh` | The SSO portal — the login page you get bounced to | `admin` + password |
+| **Grafana** | `grafana.int.v2e.sh` | Dashboards + alerting (the "Estate Overview" is the home) | **Sign in with Authelia** |
+| **Uptime Kuma** | `uptime.int.v2e.sh` | Uptime/status monitors (currently unconfigured) | Authelia, then its own login |
+| **Semaphore** | `semaphore.int.v2e.sh` | Run Ansible ops tasks (patch, add-user, health check) | Authelia, then its own `admin` login |
+| **Arcane** | `arcane.int.v2e.sh` | View/manage the Docker containers | **Sign in with OIDC Provider** |
+| **ntfy** | `ntfy.int.v2e.sh` | Push notifications (Grafana alerts land here) | Authelia |
+| **Vaultwarden** | `vault.int.v2e.sh` | Password vault (Bitwarden-compatible) | **Its own master password** (not SSO) |
+| **Traefik** | `traefik.int.v2e.sh` | Reverse-proxy dashboard (routers/services/certs) | Authelia |
+| **Whoami** | `whoami.int.v2e.sh` | Echoes your request headers — a test/canary | Authelia |
+
+Infra-node services (no web login of their own via Traefik): **Technitium** (internal DNS,
+its admin UI is on the infra node), **RustDesk** (remote-desktop relay to the control node).
+
+## App notes
+
+### Grafana — dashboards & alerts
+Click **Sign in with Authelia**; you land on the **v2e — Estate Overview** dashboard
+(health-at-a-glance, host + per-container resources, Traefik traffic). Alert rules live
+under **Alerting → Alert rules** and fire to ntfy. Members of the `grafana-admins` group
+get server-admin; there's also a break-glass local `admin` login if SSO is ever down.
+
+### Semaphore — ops automation
+Authelia gate, then Semaphore's **own** `admin` login. This is where you run maintenance
+playbooks (patch/upgrade, add a user, an estate health check) as click-to-run task
+templates, and where other people can add their own repository of playbooks. *(The starter
+templates are being wired up — see the DevOps-platform spec.)*
+
+### Arcane — container management
+Click **Sign in with OIDC Provider**. Gives you a view of every container on the services
+node — logs, restart, stats — reaching Docker through a hardened socket proxy (no raw
+socket). Members of `arcane-admins` get admin.
+
+### ntfy — notifications
+The web UI is Authelia-gated. To actually **receive** alerts, subscribe to the topic
+**`v2e-alerts`**: open `ntfy.int.v2e.sh`, or install the ntfy app and point it at
+`https://ntfy.int.v2e.sh`, then subscribe to `v2e-alerts`. Grafana publishes every alert
+there.
+
+### Vaultwarden — password vault
+This one is **not** behind SSO on purpose — the Bitwarden apps can't do an interactive
+Authelia login. You use it through the official **Bitwarden** clients (see below). Only its
+`/admin` panel is Authelia-gated.
+
+You do **not** run any Bitwarden server — Vaultwarden *is* the server. You just install the
+free official **Bitwarden** clients and point them at it:
+
+1. Install the official **Bitwarden** browser extension / mobile / desktop app (normal app
+   store — it's free), or the `bw` CLI.
+2. **Before logging in**, open its settings → **self-hosted / server URL** and set
+   `https://vault.int.v2e.sh`.
+3. First account: an operator invites it from `vault.int.v2e.sh/admin` (public signups are
+   off), then you set your master password on first login.
+
+Because the URL is internal, the clients only reach it while the device is on the tailnet.
+
+## Simple setup — first-time access
+
+To reach any of the above you need to be on the lab's Tailscale network with split-DNS, so
+`*.int.v2e.sh` resolves to the internal reverse proxy.
+
+1. **Join the tailnet.** Get added to the Tailscale tailnet (operator invites you / shares
+   an auth key). Install Tailscale on your device and log in.
+2. **You get the routes + DNS automatically.** The `control` node advertises the internal
+   subnet (`10.1.0.0/16`) and split-DNS for `int.v2e.sh` → the internal DNS server, so once
+   you're on the tailnet, `https://grafana.int.v2e.sh` (and the rest) just resolve.
+   - On macOS, if a name doesn't resolve, add `/etc/resolver/int.v2e.sh` pointing at the
+     internal DNS, or toggle Tailscale's "Use Tailscale DNS".
+   - If you're using a Tailscale **exit node**, your DNS goes through it — that can shadow
+     the split-DNS. Turn the exit node off to reach `int.v2e.sh`, or add the resolver file.
+3. **Log in once at Authelia.** Visit any app; you'll be bounced to `auth.int.v2e.sh`. Sign
+   in as `admin`. That session then covers every SSO app — Grafana, Semaphore, Arcane,
+   Traefik, Uptime Kuma, ntfy.
+4. **Vaultwarden + notifications are separate:** set up the Bitwarden client (above) for the
+   vault, and subscribe to the `v2e-alerts` ntfy topic to get alerts.
+
+That's it — join the tailnet, log into Authelia once, and everything above is reachable.

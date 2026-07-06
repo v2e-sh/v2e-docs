@@ -13,6 +13,7 @@ edit_uri: edit/main/
 nav:
   - Home: index.md
   - Runbook: RUNBOOK.md
+  - Using the lab: guides/using-the-apps.md
   - Configuration reference: CONFIGURATION.md
   - System:
       - Architecture overview: system/architecture.md
