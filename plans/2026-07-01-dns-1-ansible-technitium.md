@@ -60,7 +60,7 @@
 
 - [ ] **Step 1: Confirm the branch**
 
-Run: `git -C /Users/alex/Documents/v2e-environment/v2e-ansible branch --show-current`
+Run: `git -C ~/v2e-environment/v2e-ansible branch --show-current`
 Expected: `feat/ansible-technitium` (else `git checkout -b feat/ansible-technitium`).
 
 - [ ] **Step 2: Add the `dns` group to the inventory**
@@ -125,7 +125,7 @@ technitium_admin_password: "{{ vault_technitium_admin_password | default('') }}"
 
 Run:
 ```bash
-cd /Users/alex/Documents/v2e-environment/v2e-ansible
+cd ~/v2e-environment/v2e-ansible
 ansible-inventory -i inventory/hosts.ini --graph
 ```
 Expected: `dns01` appears under `@dns` and under `@linux`.
@@ -299,7 +299,7 @@ SOPS secret (`vault_technitium_admin_password`).
 
 - [ ] **Step 4: Lint**
 
-Run: `cd /Users/alex/Documents/v2e-environment/v2e-ansible && ansible-lint roles/technitium/`
+Run: `cd ~/v2e-environment/v2e-ansible && ansible-lint roles/technitium/`
 Expected: no errors (tasks come next; defaults/handlers should be clean).
 
 - [ ] **Step 5: Commit**
@@ -391,7 +391,7 @@ git commit -m "ansible: scaffold the technitium role (defaults, handler, readme)
 Because `configure.yml` doesn't exist yet, create a temporary empty placeholder so the import resolves, then syntax-check:
 
 ```bash
-cd /Users/alex/Documents/v2e-environment/v2e-ansible
+cd ~/v2e-environment/v2e-ansible
 printf -- '---\n' > roles/technitium/tasks/configure.yml
 ansible-playbook -i inventory/hosts.ini --syntax-check playbooks/02-dns.yml 2>/dev/null || \
   echo "02-dns.yml not created yet — will syntax-check in Task 7"
@@ -533,7 +533,7 @@ Overwrite `roles/technitium/tasks/configure.yml` with (auth + zone + records; se
 
 - [ ] **Step 2: Lint + syntax check via the playbook (created in Task 7 — do a role-only lint now)**
 
-Run: `cd /Users/alex/Documents/v2e-environment/v2e-ansible && ansible-lint roles/technitium/`
+Run: `cd ~/v2e-environment/v2e-ansible && ansible-lint roles/technitium/`
 Expected: clean. If ansible-lint flags `risky-shell-pipe`/`no-changed-when`, confirm each write task has an explicit `changed_when` (they do) and each read has `changed_when: false`.
 
 - [ ] **Step 3: Commit**
@@ -599,7 +599,7 @@ git commit -m "ansible: technitium api — auth bootstrap, zone, wildcard+apex r
 
 - [ ] **Step 2: Lint**
 
-Run: `cd /Users/alex/Documents/v2e-environment/v2e-ansible && ansible-lint roles/technitium/`
+Run: `cd ~/v2e-environment/v2e-ansible && ansible-lint roles/technitium/`
 Expected: clean.
 
 - [ ] **Step 3: Commit**
@@ -655,7 +655,7 @@ In `site.yml`, insert the DNS phase between bootstrap and services:
 
 Run:
 ```bash
-cd /Users/alex/Documents/v2e-environment/v2e-ansible
+cd ~/v2e-environment/v2e-ansible
 ansible-playbook -i inventory/hosts.ini --syntax-check site.yml
 ```
 Expected: lists the plays including `Internal DNS appliance (Technitium)` with no errors.
