@@ -8,7 +8,7 @@
     [Application estate](../system/applications.md) page.
 
 **Date:** 2026-06-30
-**Phase:** COMPOSE-1 — see `MASTER-PLAN.md` §5
+**Phase:** COMPOSE-1
 **Branch:** `feat/compose-traefik-tls`
 **Repo:** `v2e-compose` · **Consumed by:** ANS-3 (`docker_compose_v2` deploy) · **Followed by:** COMPOSE-2 (TinyAuth)
 **Status:** design approved — ready for implementation planning (writing-plans).
@@ -466,7 +466,7 @@ host, e.g. via `make`):**
 5. `make prod`; re-check `curl -v https://whoami.int.v2e.sh` (no `-k`) → succeeds with a real
    Let's Encrypt issuer.
 
-**Acceptance (from MASTER-PLAN §5):** Traefik pulls a valid wildcard LE cert
+**Acceptance:** Traefik pulls a valid wildcard LE cert
 (staging→prod); `whoami` reachable over HTTPS with the redirect working.
 
 ---
@@ -492,4 +492,3 @@ COMPOSE-1 defines the contract ANS-3 fulfils on the real host:
   releases API.
 - Christian Lempa Boilerplates v2 Traefik template (single-file command-flag style, env/
   secret handling) — `github.com/ChristianLempa/boilerplates` → `library/compose/traefik`.
-- MASTER-PLAN.md §5 (COMPOSE-1), §3 (secrets flow), Appendix B (Cloudflare DNS-01 / TLS).
