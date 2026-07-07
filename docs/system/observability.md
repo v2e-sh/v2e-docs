@@ -64,7 +64,7 @@ flowchart LR
   loki --> graf
   graf -->|alert rule eval| graf
 
-  user((TinyAuth user)) -->|websecure| traefik
+  user((Authelia user)) -->|websecure| traefik
   traefik -.->|grafana.INTERNAL_DOMAIN| graf
   traefik -.->|uptime.INTERNAL_DOMAIN| kuma
 ```
@@ -137,7 +137,7 @@ collection before the OOM killer fires.
 ## Uptime Kuma
 
 Uptime Kuma runs synthetic probes and is published at `uptime.${INTERNAL_DOMAIN}`
-(TinyAuth-gated, `websecure` entrypoint, TLS on). Its healthcheck uses the upstream
+(Authelia-gated via `authelia@docker` forward-auth, `websecure` entrypoint, TLS on). Its healthcheck uses the upstream
 image's own Go probe (`extra/healthcheck`) against the local `:3001` app, with a 60s
 `start_period`. Uptime Kuma keeps its notification integrations independent of Grafana,
 providing a second, self-contained alerting path.
@@ -197,15 +197,21 @@ priority to add.
 
 ## Access and state
 
-Grafana signs in as `admin` with `GF_SECURITY_ADMIN_PASSWORD` sourced from the
-SOPS-rendered `.env` (`grafana_admin_password`); sign-up, analytics, and update checks
-are disabled, and the root URL is `https://grafana.${INTERNAL_DOMAIN}/`. Grafana
-provisions two datasources from `config/grafana-datasources.yaml` — Prometheus (default)
-and Loki — both in `proxy` access mode, which is why neither backend needs its own
-Traefik route.
+Grafana's primary sign-in is native Authelia OIDC (generic OAuth, `GF_AUTH_GENERIC_OAUTH_*`),
+with group→role mapping (`grafana-admins → GrafanaAdmin`, `grafana-editors → Editor`, else
+`Viewer`). The OAuth token/userinfo calls are a backchannel from the container to
+`auth.int.v2e.sh`, pinned to Traefik's VLAN IP via `extra_hosts` (`auth.int.v2e.sh:10.1.2.10`).
+The local `admin` login with `GF_SECURITY_ADMIN_PASSWORD` (SOPS `grafana_admin_password`) is
+retained as break-glass; local form sign-up stays disabled (`GF_USERS_ALLOW_SIGN_UP=false`),
+while OAuth auto-provisioning is intentionally on. The root URL is
+`https://grafana.${INTERNAL_DOMAIN}/`. Grafana provisions two datasources from
+`config/grafana-datasources.yaml` — Prometheus (default) and Loki — both in `proxy` access
+mode, which is why neither backend needs its own Traefik route.
 
-Both published routes attach the `auth@docker` (TinyAuth) and `secure-headers@docker`
-middlewares. All persisted state uses named volumes (`prometheus-data`, `grafana-data`,
+Grafana's Traefik router carries only `secure-headers@docker` — it is gated by Authelia OIDC
+in-application, not by forward-auth (both together would double-gate the OIDC redirect). Uptime
+Kuma's router, by contrast, attaches `authelia@docker,secure-headers@docker`. All persisted
+state uses named volumes (`prometheus-data`, `grafana-data`,
 `loki-data`, `alloy-data`, `kuma-data`) rather than bind mounts, because the images run
 as non-root uids — grafana `472`, prometheus `65534`, loki `10001` — that cannot write
 root-owned host directories.

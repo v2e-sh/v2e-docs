@@ -1,4 +1,8 @@
-# v2e — Handover / State of the Lab (2026-07-02)
+# v2e — Handover / State of the Lab (2026-07-06)
+
+> **2026-07-06:** the auth layer migrated from TinyAuth to **Authelia 4.39.20** — Authelia
+> is now the sole SSO gate (forward-auth for whoami/traefik/uptime/semaphore, native OIDC
+> for Grafana and Arcane). References below reflect that change.
 
 Single source of truth for picking the project back up. Everything below is **live and
 verified** unless marked otherwise. Secrets are **not** in this file — real values live in
@@ -19,14 +23,20 @@ Five VMs on the Proxmox host `pve` (`10.10.10.62`), all up:
 | 313 | agent | Debian | 4 / 4G | 10.1.3.10 (103) | AI agent node (restricted egress) |
 | 314 | infra | Debian | 2 / 2G | 10.1.0.10 (100/mgmt) | Technitium DNS + RustDesk relay (Docker) |
 
-**services stacks** (all healthy, behind Traefik + TinyAuth, on `int.v2e.sh`, **production**
-Let's Encrypt wildcard cert): traefik, tinyauth, whoami, semaphore (+postgres), arcane,
-observability (prometheus, grafana, loki, alloy, uptime-kuma, node-exporter, cadvisor).
+**services stacks** (all healthy, behind Traefik + **Authelia 4.39.20**, on `int.v2e.sh`,
+**production** Let's Encrypt wildcard cert): traefik, authelia, whoami, semaphore (+postgres),
+arcane (+ docker-socket-proxy), observability (prometheus, grafana, loki, alloy, uptime-kuma,
+node-exporter, cadvisor).
 
 **infra stacks**: technitium (DNS, `int.v2e.sh` zone), rustdesk (hbbs/hbbr relay).
 
-App URLs (internal, trusted cert): `https://<app>.int.v2e.sh` for
-`whoami` (open), `grafana`, `uptime`, `arcane`, `semaphore`, `traefik`, `tinyauth` (TinyAuth-gated).
+App URLs (internal, trusted cert): `https://<app>.int.v2e.sh`. Auth portal is
+`https://auth.int.v2e.sh` (admin user `admin`). `whoami`, `uptime`, `semaphore` and `traefik`
+are gated by Authelia forward-auth (the `authelia@docker` middleware — whoami is no longer open,
+an unauthenticated hit now redirects `302` to the portal); `grafana` and `arcane` sign in via
+native Authelia OIDC (their routers carry only `secure-headers@docker`, and pin
+`auth.int.v2e.sh → 10.1.2.10` via `extra_hosts` for the OIDC backchannel). Groups drive roles:
+`admins` / `arcane-admins` / `grafana-admins` / `grafana-editors`.
 
 ---
 
@@ -56,8 +66,9 @@ App URLs (internal, trusted cert): `https://<app>.int.v2e.sh` for
 
 - **v2e-tf** — OpenTofu: router + 4 nodes, cloud-init, VyOS firewall. Deploy entry point.
 - **v2e-ansible** — first-boot config: `site.yml` imports `01-bootstrap` → `02-services` →
-  `03-applications` → `04-infra`. Control clones + runs this at first boot.
-- **v2e-compose** — docker stacks (traefik/tinyauth/whoami/semaphore/arcane/observability/technitium/rustdesk).
+  `03-applications` → `04-infra` → `05-tailscale` → `06-control-desktop`. Control clones + runs
+  this at first boot.
+- **v2e-compose** — docker stacks (traefik/authelia/whoami/semaphore/arcane/observability/technitium/rustdesk).
 - **v2e-templates** — Proxmox image build (run on the PVE host; `bash build-{ubuntu,debian,vyos,parrot}.sh`; staging VMIDs 9900-9903).
 - **v2e-docs** — this file, `RUNBOOK.md`, `CONFIGURATION.md`, `MASTER-PLAN.md`, `specs/`, `plans/`, `RUNBOOK-DEVIATIONS-2026-07-01.md`.
 
@@ -75,9 +86,10 @@ rule: *every configurable thing = a variable, auto-applied*).
 > Full clean rebuild converges unattended (cloud-init done, errors: []); re-converge
 > on existing nodes also proven (#14 fixed the git-ownership/Parrot-tailscale/
 > broken-conditional re-run bugs). Tailscale is JOINED with a reusable key in SOPS
-> (control advertises 10.1.0.0/16; infra on the tailnet). Remaining manual: approve
-> the route + split-DNS `int.v2e.sh → 10.1.0.10` in the Tailscale admin console;
-> pin `rustdesk_client_version`+sha256 (role skips until set). Docs are browsable
+> (control advertises 10.1.0.0/16; infra on the tailnet). The route + split-DNS
+> `int.v2e.sh → 10.1.0.10` are now approved and live in the Tailscale admin console, and
+> `rustdesk_client_version` is pinned to `1.4.8` + sha256 in
+> `inventory/group_vars/control.yml`. Docs are browsable
 > at <https://v2e-sh.github.io/v2e-docs/>. The original mapping (implemented):
 
 | Live thing | Proposed | Secrets (SOPS) | Non-secret (group_vars) |
@@ -87,10 +99,15 @@ rule: *every configurable thing = a variable, auto-applied*).
 | **RustDesk client on control** (.deb install, unattended pw, direct-IP) | `roles/rustdesk_client` | `rustdesk_unattended_password`, `rustdesk_key` | relay host, direct-IP toggle |
 | **Control desktop** (lightdm autologin=v2e, KDE compositor off, resolv.conf→Technitium, /etc/hosts shim) | `roles/control_desktop` | — | `desktop_autologin_user`, `resolv_nameservers`, compositor toggle |
 
-**Required env.j2 fix before infra deploy is codified**: `roles/compose_stack/templates/env.j2`
-renders cf/tinyauth/semaphore/arcane/grafana secrets but **not** `TECHNITIUM_ADMIN_PASSWORD` /
-`NAME_SERVERS` — the infra technitium stack fails closed without them. Add both (password with the
-`| replace('$','$$')` escape).
+**env.j2 secret rendering — DONE**: `roles/compose_stack/templates/env.j2` now renders
+`TECHNITIUM_ADMIN_PASSWORD` / `NAME_SERVERS` (lines 49–50, password with the
+`| replace('$','$$')` escape). The TinyAuth secrets were removed in the SSO migration and
+replaced with the `AUTHELIA_*` set (`AUTHELIA_SESSION_SECRET`,
+`AUTHELIA_STORAGE_ENCRYPTION_KEY`, `AUTHELIA_RESET_PASSWORD_JWT_SECRET`,
+`AUTHELIA_OIDC_HMAC_SECRET`) plus the plaintext OIDC client secrets for the RP apps
+(`ARCANE_OIDC_CLIENT_SECRET`, `GRAFANA_OIDC_CLIENT_SECRET`). Each secret block is now scoped
+by `{% if '<stack>' in compose_stack_stacks %}`, so a host only renders the secrets for the
+stacks it runs.
 
 ---
 
@@ -103,9 +120,13 @@ renders cf/tinyauth/semaphore/arcane/grafana secrets but **not** `TECHNITIUM_ADM
   `TF_ENCRYPTION`** (RUNBOOK Appendix B) before real launch; treat `.tfstate*` as key material.
 - **H1 — Cloudflare DNS-01 token is the reused broad tunnel token** (Tunnel+DNS+Zone), and it lives
   in Traefik's `.env` on services. **Fix: mint a dedicated Zone:DNS:Edit+Read token for `v2e.sh` only.**
-- **H2 — Arcane has `docker.sock` mounted RW** (root-equiv on the services host). **Fix: front with
-  docker-socket-proxy** (upstream example referenced in `arcane/compose.yml`).
-- **H3 — Arcane default `admin`/`password`**, change is manual. **Fix: seed real creds via env/SOPS.**
+- **H2 — Arcane `docker.sock` RW** — ✅ FIXED (v2e-compose #34). Arcane no longer mounts the
+  socket; it reaches Docker via `DOCKER_HOST=tcp://docker-socket-proxy:2375` (tecnativa
+  `docker-socket-proxy:v0.4.2`, socket mounted `:ro`, `cap_drop: ALL`, default-deny API allowlist,
+  on an internal no-egress network).
+- **H3 — Arcane local `admin`/`password`** — superseded by the SSO migration (v2e-compose #34):
+  Arcane now signs in via native Authelia OIDC (`arcane-admins → role_admin`). Residual: the local
+  login is kept ENABLED as break-glass — disable/rotate it in the UI once OIDC-only is proven.
 - **M1** two always-on SSH ingress paths to control (DNAT 2201 + tunnel), Access OTP off by default —
   pick one / gate behind `trusted_mgmt_sources`. **M2** ephemeral Tailscale key (drops on reboot) →
   ANS-4 with reusable key. **M3** ParrotOS baked `user` account still on control (console/RustDesk
@@ -139,10 +160,10 @@ renders cf/tinyauth/semaphore/arcane/grafana secrets but **not** `TECHNITIUM_ADM
 
 ## 7. Backlog / future work (prioritized)
 
-**A. Codify live config into roles+variables** (§4) — **authored, v2e-ansible PR #13** (pending
-review + a `--check --diff` run from control). Remaining after merge: mint a reusable
-`tailscale_authkey`, pin `rustdesk_client_version`+sha256, approve route/split-DNS in the
-Tailscale console. Then a clean rebuild reproduces everything.
+**A. Codify live config into roles+variables** (§4) — ✅ DONE (merged + live). The reusable
+`tailscale_authkey` is in SOPS, `rustdesk_client_version` + sha256 are pinned
+(`inventory/group_vars/control.yml`), and the route/split-DNS are approved in the Tailscale
+console. A clean rebuild reproduces everything.
 
 **B. Security hardening for launch**: C2 (encrypt state), H1 (dedicated DNS-01 token), H2 (arcane
 socket-proxy), H3 (arcane seeded creds), rotate all secrets + age key, M1-M5.
@@ -164,9 +185,11 @@ is lowest priority (restricted AI node). Today: services host + all containers A
 
 **H. Backup/DR** (review compose#6): **target = the user's TrueNAS** (redundant databases + files).
 Plan: an ansible systemd-timer role → pg_dump (semaphore) + tar of {technitium zone, arcane data,
-acme.json, grafana, uptime-kuma} → push to a TrueNAS share (NFS/SMB mount or `restic`/`rsync` to a
-TrueNAS dataset). Add TrueNAS as an offsite/redundant copy (3-2-1). Do once any lab state stops
-being throwaway; wire the TrueNAS mount as a variable.
+acme.json, grafana, uptime-kuma, **Authelia** (`authelia_authelia-data` volume — the OIDC/consent/
+user SQLite state — plus `users_database.yml`)} → push to a TrueNAS share (NFS/SMB mount or
+`restic`/`rsync` to a TrueNAS dataset). Authelia is now the single IdP, so losing its state = an
+SSO outage for every gated app — it must be in scope. Add TrueNAS as an offsite/redundant copy
+(3-2-1). Do once any lab state stops being throwaway; wire the TrueNAS mount as a variable.
 
 **I. De-Cloudflare / privacy migration** (user direction, needs the VPS first): move off Cloudflare
 toward certbot to shrink the third-party footprint. Steps once a VPS exists: run ACME via certbot
@@ -191,10 +214,14 @@ mac `/etc/resolver/int.v2e.sh` or a Tailscale exit node so no per-service config
 - **D3** reconcile the stale `plans/2026-07-01-dns-1-ansible-technitium.md` (describes a `dns` node @ `.53` native — reality is Docker on `infra` @ `.10`).
 - **D4** docs PR #2 (full-stack-runbook) superseded by the D1 rewrite — closed. PR #3 (master-plan-reconcile) still open: review vs current reality, merge or close.
 
-**E. Remaining MASTER-PLAN phases**: COMPOSE-4 (Cloudflare tunnel + 2FA), Phase G alerting rules,
-Phase H (GHCR images), agent/MCP (Phase I), DR/backup (DOCS-2).
+**E. Remaining MASTER-PLAN phases**: COMPOSE-4 (Cloudflare tunnel) — 2FA is now an Authelia
+`two_factor` policy toggle (currently `one_factor`, deferred by design), no longer a TinyAuth/
+tunnel deliverable; Phase G alerting rules are merged + live (six rules in
+`observability/config/grafana-alerting.yaml`) but route nowhere — remaining work is
+contact-point/notification delivery; Phase H (GHCR images), agent/MCP (Phase I), DR/backup (DOCS-2).
 
-**F. Cleanup**: prune stale git branches (many old feature branches across repos — verify merged
+**F. Cleanup**: prune stale git branches (scope grown post-SSO — ~16 merged SSO feature branches
+in v2e-compose plus stale remotes in v2e-tf (4), v2e-ansible (2), v2e-docs (2); verify merged
 first with `gh pr list --state merged`); ParrotOS baked `user` removal; browser-DoH breaks
 `int.v2e.sh` on the control desktop (disable DoH or set browser to system DNS).
 
@@ -202,8 +229,10 @@ first with `gh pr list --state merged`); ParrotOS baked `user` removal; browser-
 
 ## 8. Where the credentials are
 
-`v2e-tf/.deploy-creds.txt` (local, gitignored) holds: v2e sudo/login, root, TinyAuth, Grafana,
-Semaphore, Technitium admin, RustDesk unattended, and the Cloudflare/Proxmox tokens are in
+`v2e-tf/.deploy-creds.txt` (local, gitignored) holds: v2e sudo/login, root, the Authelia `admin`
+portal password (+ the `authelia_*` session/storage/JWT/HMAC secrets, RS256 issuer key and OIDC
+client secrets live in SOPS `secrets.sops.yaml`), Grafana, Semaphore, Technitium admin, RustDesk
+unattended, and the Cloudflare/Proxmox tokens are in
 `v2e-tf/terraform.tfvars`. SOPS secrets are in `v2e-tf/secrets.sops.yaml` (decrypt:
 `SOPS_AGE_KEY_FILE=keys.txt sops -d secrets.sops.yaml`). **Rotate all of it for production.**
 </content>
