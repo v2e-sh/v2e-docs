@@ -29,23 +29,29 @@ for ACME registration and email only.
 | whoami | `whoami.int.v2e.sh` | `services` | Request-echo / connectivity probe | Authelia (forward-auth) |
 | Semaphore | `semaphore.int.v2e.sh` | `services` | Ansible/task runner UI (+ Postgres) | Authelia (forward-auth) |
 | Arcane | `arcane.int.v2e.sh` | `services` | Docker stack manager | Authelia (native OIDC) |
+| Vaultwarden | `vault.int.v2e.sh` | `services` | Password vault (Bitwarden-compatible) | Split — app auth; `/admin` Authelia |
 | Grafana | `grafana.int.v2e.sh` | `services` | Metrics/logs dashboards | Authelia (native OIDC) |
 | Uptime Kuma | `uptime.int.v2e.sh` | `services` | Uptime/status monitoring | Authelia (forward-auth) |
+| ntfy | `ntfy.int.v2e.sh` | `services` | Push notifications for Grafana alerts | Authelia (forward-auth) |
 | Prometheus | *(internal only)* | `services` | Metrics store; surfaced through Grafana | No route |
 | Loki | *(internal only)* | `services` | Log store; surfaced through Grafana | No route |
 | Alloy | *(internal only)* | `services` | Log/metric collector to Loki | No route |
 | node-exporter | *(host network)* | `services` | Host metrics for Prometheus | No route |
 | cAdvisor | *(internal only)* | `services` | Container metrics for Prometheus | No route |
+| blackbox-exporter | *(internal only)* | `services` | Synthetic cert/DNS/tailnet probes for Prometheus | No route |
 | Technitium | `infra:5380` (HTTP) | `infra` | Internal DNS server + admin console | LAN / tailnet only |
 | RustDesk (hbbs/hbbr) | *(host ports)* | `infra` | Self-hosted remote-desktop relay | Tailnet only |
 | Mullvad exit | *(Tailscale exit node)* | `infra` | Mullvad-tunnelled exit node | Tailnet only |
 
 !!! info "What gated means"
-    There are two gate styles. Most gated applications carry the `authelia@docker`
+    There are three gate styles. Most gated applications carry the `authelia@docker`
     middleware — Authelia's forward-auth — and an unauthenticated request is redirected to
     the Authelia portal at `auth.int.v2e.sh` before it ever reaches the application. Grafana
     and Arcane instead carry only `secure-headers@docker` at the proxy and are gated
     in-application by native Authelia OIDC (no forward-auth, to avoid double-gating).
+    Vaultwarden is a split case: its main app and API carry only `secure-headers@docker` and
+    are gated by Vaultwarden's own master-password auth (an interactive Authelia login would
+    break the Bitwarden clients), while only its `/admin` router adds `authelia@docker`.
     Applications with no Traefik route are unreachable over HTTPS: they are internal to a
     Docker network, or exposed on the LAN or tailnet outside the proxy.
 
@@ -61,12 +67,15 @@ flowchart TD
         whoami["whoami"]
         semaphore["Semaphore + Postgres"]
         arcane["Arcane"]
+        vault["Vaultwarden"]
         grafana["Grafana"]
         uptime["Uptime Kuma"]
+        ntfy["ntfy"]
         prom["Prometheus"]
         loki["Loki"]
         alloy["Alloy"]
         cadvisor["cAdvisor"]
+        blackbox["blackbox-exporter"]
         nodeexp["node-exporter"]
     end
 
@@ -81,15 +90,19 @@ flowchart TD
     traefik -->|gated| whoami
     traefik -->|gated| semaphore
     traefik --> arcane
+    traefik -->|split auth| vault
     traefik --> grafana
     traefik -->|gated| uptime
+    traefik -->|gated| ntfy
     arcane -.->|OIDC backchannel| authelia
     grafana -.->|OIDC backchannel| authelia
 
     grafana --> prom
     grafana --> loki
+    grafana -->|alerts| ntfy
     prom --> cadvisor
     prom --> nodeexp
+    prom --> blackbox
     prom -->|:8082 metrics| traefik
     alloy --> loki
 
@@ -127,8 +140,8 @@ resolvers — `staging` and `production` — selected by `CERT_RESOLVER`.
 Authelia `4.39.20` (`docker.io/authelia/authelia`) is the lab's single SSO gate, replacing
 TinyAuth in the 2026-07-06 migration. It plays two roles:
 
-- **Forward-auth** for whoami, the Traefik dashboard, Uptime Kuma, and Semaphore. It
-  publishes the `authelia` middleware
+- **Forward-auth** for whoami, the Traefik dashboard, Uptime Kuma, Semaphore, ntfy, and
+  Vaultwarden's `/admin` path. It publishes the `authelia` middleware
   (`forwardauth.address=http://authelia:9091/api/authz/forward-auth`,
   `trustForwardHeader=true`) that those applications reference as `authelia@docker`. On
   success it injects the same `Remote-User`, `Remote-Groups`, `Remote-Email`, and
@@ -184,10 +197,29 @@ break-glass until OIDC-only is proven.
     API allowlist, and sits on an internal no-egress network. Arcane still runs with
     `cgroup: host` so it can detect its own container.
 
+### Vaultwarden — password vault
+
+Vaultwarden `1.36.0-alpine` (`vaultwarden/server`) is a self-hosted, Bitwarden-compatible
+password vault published at `vault.int.v2e.sh`. It is zero-knowledge — vault items are
+encrypted client-side and the server never sees plaintext — and runs on Rocket's
+non-privileged `:8080` with a 192m `mem_limit`. Signups are disabled
+(`SIGNUPS_ALLOWED=false`); users are invited from the `/admin` panel, which is protected by an
+`ADMIN_TOKEN` (SOPS `vaultwarden_admin_token`). The `vaultwarden-data` volume holds the
+database and keys — real state that must be part of the backup/DR work.
+
+Its auth is split across two routers on the same hostname:
+
+- The main app and API router (`priority 10`) carries only `secure-headers@docker`.
+  Vaultwarden's own master-password auth is the gate — the Bitwarden extension, CLI, and
+  mobile clients cannot complete an interactive Authelia login, so forward-auth is
+  deliberately kept off this path.
+- The `/admin` router (`priority 20`, `PathPrefix(/admin)`) adds `authelia@docker` on top of
+  the `ADMIN_TOKEN`, so the admin panel sits behind the SSO gate as defense in depth.
+
 ### Observability — Grafana, Prometheus, Loki, and exporters
 
-The observability stack is defined in a single `observability/compose.yml`. Only two of its
-services get Traefik routes; everything else is internal and surfaced through Grafana.
+The observability stack is defined in a single `observability/compose.yml`. Three of its
+services get Traefik routes (Grafana, Uptime Kuma, and ntfy); everything else is internal.
 
 - Grafana `13.0.3` is published at `grafana.int.v2e.sh`. Its router carries only
   `secure-headers@docker`; sign-in is native Authelia OIDC (generic OAuth, group→role
@@ -195,12 +227,18 @@ services get Traefik routes; everything else is internal and surfaced through Gr
   password (SOPS `GRAFANA_ADMIN_PASSWORD`) remains as break-glass.
 - Uptime Kuma `2.4.0-slim` (`louislam/uptime-kuma`) is published at `uptime.int.v2e.sh` and
   gated by Authelia forward-auth. It also probes the `infra` appliances over the tailnet.
-- Prometheus `v3.13.0` is the metrics store; it scrapes cAdvisor, node-exporter, and
-  Traefik's `:8082`. No route.
+- ntfy `v2.25.0` (`binwiederhier/ntfy`) is published at `ntfy.int.v2e.sh` behind Authelia
+  forward-auth (`mem_limit` 64m) and is the push target for Grafana alerts — Grafana
+  publishes to the `v2e-alerts` topic over the `observability` network.
+- Prometheus `v3.13.0` is the metrics store; it scrapes cAdvisor, node-exporter,
+  blackbox-exporter, and Traefik's `:8082`. No route.
 - Loki `3.7.3` and Alloy `v1.17.1` are the log store and collector; Alloy tails the Docker
   socket and ships to Loki. No routes.
 - node-exporter `v1.11.1` (host network, host PID) and cAdvisor `v0.60.3` provide host and
   container metrics. No routes.
+- blackbox-exporter `v0.27.0` (`quay.io/prometheus/blackbox-exporter`, `mem_limit` 32m) runs
+  synthetic TLS-cert-expiry, DNS, and tailnet probes that Prometheus scrapes with per-target
+  module/target params. No route.
 
 !!! note "Memory budget"
     The `services` node is a 4 GB VM, so every container in this stack is memory-capped
@@ -252,19 +290,23 @@ CGNAT allowlist, and the full namespace-isolation model.
 flowchart LR
     req([Request to *.int.v2e.sh]) --> t{Traefik router}
     t -->|authelia portal| portal["public portal<br/>(auth.int.v2e.sh)"]
-    t -->|"whoami / traefik<br/>semaphore / uptime"| gate{"authelia@docker"}
+    t -->|"whoami / traefik / semaphore<br/>uptime / ntfy / vault /admin"| gate{"authelia@docker"}
     gate -->|no session| portal
     gate -->|valid session| app2["secure-headers → app<br/>(semaphore keeps a 2nd login)"]
     t -->|grafana / arcane| oidc["secure-headers → app<br/>(native OIDC to Authelia)"]
+    t -->|vault app / API| split["secure-headers → app<br/>(Vaultwarden own auth)"]
     oidc -.->|OIDC backchannel| portal
 ```
 
-Two gate classes now exist. **Forward-auth** (`authelia@docker`) fronts whoami, the Traefik
-dashboard, Uptime Kuma, and Semaphore — of these, only Semaphore keeps a native second login
-behind the SSO gate. **Native OIDC** covers Grafana and Arcane: their routers carry only
-`secure-headers@docker` and they authenticate against Authelia in-application (one SSO
-identity, no double login). whoami is no longer open — it was the SSO-2 canary — and the
-`infra` appliances sit entirely outside this HTTP path.
+Three gate classes now exist. **Forward-auth** (`authelia@docker`) fronts whoami, the Traefik
+dashboard, Uptime Kuma, Semaphore, ntfy, and Vaultwarden's `/admin` path — of these, only
+Semaphore keeps a native second login behind the SSO gate. **Native OIDC** covers Grafana and
+Arcane: their routers carry only `secure-headers@docker` and they authenticate against Authelia
+in-application (one SSO identity, no double login). **Split-auth** covers Vaultwarden's main
+app and API: the router carries only `secure-headers@docker` and Vaultwarden's own
+master-password auth is the gate — an interactive Authelia login would break the Bitwarden
+clients, so only its `/admin` router is forward-auth-gated. whoami is no longer open — it was
+the SSO-2 canary — and the `infra` appliances sit entirely outside this HTTP path.
 
 ## Related
 

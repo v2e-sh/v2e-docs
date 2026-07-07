@@ -147,14 +147,16 @@ those consumed in `env.j2`.
 | `semaphore_db_pass`, `semaphore_admin_password`, `semaphore_access_key_encryption`, `semaphore_runner_reg_token` | |
 | `arcane_encryption_key`, `arcane_jwt_secret` | `cloudflare_api_token` + account / zone IDs (tunnel) |
 | `grafana_admin_password` | Proxmox connection, node sizing, and networking inputs |
+| `vaultwarden_admin_token` (Vaultwarden /admin panel token, services node) | |
 | `technitium_admin_password` | |
 | `mullvad_wireguard_private_key`, `mullvad_wireguard_addresses` | |
 | `tailscale_authkey` (use a **reusable**, not ephemeral, key) | |
 
 The per-host `compose_stack_required_secrets` list drives which keys the Ansible assert enforces: the
-services node requires `cf_dns_api_token` plus the ten `authelia_*` keys (session/storage/JWT/HMAC
+services node requires `cf_dns_api_token`, the ten `authelia_*` keys (session/storage/JWT/HMAC
 scalars, the RS256 issuer key, the admin password hash, and the per-client secret hash+plaintext
-pairs — see `group_vars/services.yml`); the infra node requires
+pairs), and `vaultwarden_admin_token` (the Vaultwarden /admin token) — see
+`group_vars/services.yml`; the infra node requires
 `technitium_admin_password`, `mullvad_wireguard_private_key`, `mullvad_wireguard_addresses`, and
 `tailscale_authkey`.
 

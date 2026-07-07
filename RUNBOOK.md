@@ -29,7 +29,7 @@ this runbook only walks the happy path.
 
 **End state:** `https://whoami.int.<your-domain>` answers with a production Let's
 Encrypt wildcard cert, `https://grafana|semaphore|arcane|uptime|traefik.int.<domain>`
-sit behind TinyAuth login — all reachable from the control node (and from your mac
+sit behind Authelia SSO login (single sign-on / OIDC) — all reachable from the control node (and from your mac
 after the post-deploy access steps).
 
 ## The whole deploy at a glance
@@ -43,7 +43,7 @@ CONFIG  2. terraform.tfvars — base config          (Block A, required)
 DEPLOY  5. tofu init && tofu apply    → router + 4 nodes; control auto-runs Ansible
 VERIFY  6. Watch it converge, then verify: cloud-init → PLAY RECAP → docker → certs
 ACCESS  7. Reach the lab: SSH paths, browser access to the apps
-MANUAL  8. Post-deploy steps not yet automated (Technitium zone, Tailscale, RustDesk)
+MANUAL  8. Post-deploy manual bits (tailnet approval/split-DNS, RustDesk client pin)
 ```
 
 ---
@@ -58,8 +58,9 @@ ssh-add -l                            # your SSH key must be loaded (the provide
 [ -f ~/.ssh/id_ed25519.pub ] || ssh-keygen -t ed25519
 ```
 
-> No Docker needed — the TinyAuth user hash is generated with `htpasswd` (ships with
-> macOS) in Step 3.
+> The Authelia admin credential is an argon2id hash (`authelia_admin_password_hash`),
+> generated in Step 3 (see CONFIGURATION.md for the exact command); htpasswd/bcrypt no
+> longer applies.
 
 ### Proxmox host
 
@@ -220,8 +221,8 @@ or feature branch of v2e-ansible).
 One **age-encrypted** secrets file is shipped to control at first boot; cloud-init
 decrypts it and passes it to `ansible-playbook` as extra-vars, and the
 `compose_stack` role renders the values into each stack's `.env`. **Without it the
-app stack does not deploy** (Ansible asserts `cf_dns_api_token` and
-`tinyauth_auth_users` are set). Design: `specs/2026-06-30-compose-auth-design.md`,
+app stack does not deploy** (Ansible asserts `cf_dns_api_token`, the `authelia_*`
+SSO secrets, and `vaultwarden_admin_token` are set). Design: `specs/2026-06-30-compose-auth-design.md`,
 `specs/2026-06-30-compose-traefik-tls-design.md`.
 
 Everything below is copy-paste; the only value you must bring is the **DNS-01
@@ -231,15 +232,35 @@ asserts on.
 ```bash
 # ---- EDIT THESE ----
 CF_DNS_TOKEN='your-scoped-cloudflare-token'    # Zone:Read + DNS:Edit (Step 0)
-TA_USER='admin'                                # TinyAuth login user
+ADMIN_USER='admin'                             # Authelia SSO login user
 TS_AUTHKEY=''                                  # Tailscale REUSABLE auth key (admin console →
                                                # Settings → Keys); empty = tailnet join skipped
+MULLVAD_WG_KEY=''                              # infra mullvad-exit only: WireGuard private key
+MULLVAD_WG_ADDRS=''                            # infra mullvad-exit only: WireGuard addresses
 
-# TinyAuth password + bcrypt hash. htpasswd emits $2y$; TinyAuth (Go bcrypt)
-# only accepts $2a$/$2b$ — the sed rewrite is REQUIRED or login silently fails.
-TA_PASS=$(openssl rand -base64 15)
-echo "TinyAuth ${TA_USER} password (SAVE THIS): $TA_PASS"
-TA_HASH=$(htpasswd -bnBC 10 "$TA_USER" "$TA_PASS" | sed 's/\$2y\$/\$2a\$/')
+# Authelia admin password + argon2id hash. Authelia stores an argon2id hash (not
+# bcrypt), so htpasswd no longer applies — the hash comes from the authelia binary.
+ADMIN_PASS=$(openssl rand -base64 15)
+echo "Authelia ${ADMIN_USER} password (SAVE THIS): $ADMIN_PASS"
+ADMIN_HASH=$(docker run --rm authelia/authelia:latest \
+  authelia crypto hash generate argon2 --password "$ADMIN_PASS" | sed 's/^Digest: //')
+
+# Authelia SSO scalar secrets + the RS256 OIDC issuer key:
+AUTHELIA_SESSION=$(openssl rand -base64 32)
+AUTHELIA_STORAGE=$(openssl rand -base64 32)
+AUTHELIA_RESET_JWT=$(openssl rand -base64 32)
+AUTHELIA_OIDC_HMAC=$(openssl rand -base64 32)
+OIDC_ISSUER_KEY=$(openssl genrsa 4096 2>/dev/null)
+
+# Per-app OIDC client secrets — plaintext for the app (.env) + pbkdf2 hash for Authelia:
+ARCANE_OIDC_SECRET=$(openssl rand -base64 24)
+ARCANE_OIDC_HASH=$(docker run --rm authelia/authelia:latest \
+  authelia crypto hash generate pbkdf2 --variant sha512 --password "$ARCANE_OIDC_SECRET" | sed 's/^Digest: //')
+GRAFANA_OIDC_SECRET=$(openssl rand -base64 24)
+GRAFANA_OIDC_HASH=$(docker run --rm authelia/authelia:latest \
+  authelia crypto hash generate pbkdf2 --variant sha512 --password "$GRAFANA_OIDC_SECRET" | sed 's/^Digest: //')
+
+VAULTWARDEN_ADMIN=$(openssl rand -base64 32)
 
 GRAFANA_PW=$(openssl rand -base64 15)
 SEMAPHORE_PW=$(openssl rand -base64 15)
@@ -253,7 +274,18 @@ echo "RustDesk unattended (SAVE THIS):  $RUSTDESK_PW"
 # 1. Author the plaintext secrets file (deleted after encryption):
 cat > secrets.yaml <<EOF
 cf_dns_api_token: "${CF_DNS_TOKEN}"
-tinyauth_auth_users: "${TA_HASH}"
+authelia_session_secret: "${AUTHELIA_SESSION}"
+authelia_storage_encryption_key: "${AUTHELIA_STORAGE}"
+authelia_reset_password_jwt_secret: "${AUTHELIA_RESET_JWT}"
+authelia_oidc_hmac_secret: "${AUTHELIA_OIDC_HMAC}"
+authelia_admin_password_hash: "${ADMIN_HASH}"
+authelia_oidc_arcane_client_secret_hash: "${ARCANE_OIDC_HASH}"
+authelia_oidc_grafana_client_secret_hash: "${GRAFANA_OIDC_HASH}"
+authelia_oidc_arcane_client_secret: "${ARCANE_OIDC_SECRET}"
+authelia_oidc_grafana_client_secret: "${GRAFANA_OIDC_SECRET}"
+authelia_oidc_issuer_key: |
+$(printf '%s\n' "${OIDC_ISSUER_KEY}" | sed 's/^/  /')
+vaultwarden_admin_token: "${VAULTWARDEN_ADMIN}"
 semaphore_db_pass: "$(openssl rand -base64 18)"
 semaphore_admin_password: "${SEMAPHORE_PW}"
 semaphore_access_key_encryption: "$(openssl rand -base64 32)"
@@ -264,6 +296,8 @@ grafana_admin_password: "${GRAFANA_PW}"
 technitium_admin_password: "${TECHNITIUM_PW}"
 tailscale_authkey: "${TS_AUTHKEY}"
 rustdesk_unattended_password: "${RUSTDESK_PW}"
+mullvad_wireguard_private_key: "${MULLVAD_WG_KEY}"
+mullvad_wireguard_addresses: "${MULLVAD_WG_ADDRS}"
 EOF
 
 # 2. Age key control uses to decrypt (shipped to control by cloud-init):
@@ -370,7 +404,7 @@ tofu apply       # type 'yes'
 `apply` creates the router first, waits `router_boot_wait` (default 120s) for VyOS
 to boot and apply routing, then builds the four nodes. Control's first boot then
 clones v2e-ansible and runs `site.yml` across the mesh (phases: bootstrap/hardening →
-services/Docker/compose → agent → infra) — allow **10–20 minutes** after apply
+services/Docker/compose → applications → infra → tailscale → control-desktop) — allow **10–20 minutes** after apply
 finishes before judging the result.
 
 ---
@@ -404,7 +438,7 @@ v2e@control:~$ sudo -iu ansible ssh services hostname             # automation m
 
 ```bash
 v2e@control:~$ ssh services docker ps --format '{{.Names}}\t{{.Status}}'
-# expect: traefik, tinyauth, whoami, semaphore(+postgres), arcane,
+# expect: traefik, authelia, whoami, semaphore(+postgres), arcane, vaultwarden,
 #         prometheus, grafana, loki, alloy, uptime-kuma, node-exporter, cadvisor — all Up (healthy)
 ```
 
@@ -424,7 +458,7 @@ resolvers — see the DNS-01 note in Troubleshooting.
 ```bash
 v2e@control:~$ curl -s --resolve whoami.int.v2e.sh:443:10.1.2.10 https://whoami.int.v2e.sh | head -3
 v2e@control:~$ curl -sI --resolve grafana.int.v2e.sh:443:10.1.2.10 https://grafana.int.v2e.sh | head -1
-# whoami: plaintext request dump, valid cert (no -k needed) · grafana: redirect to TinyAuth
+# whoami: plaintext request dump, valid cert (no -k needed) · grafana: redirect to Authelia
 ```
 
 **6. If you enabled SOPS-verify it decrypts on control:**
@@ -537,8 +571,8 @@ tofu destroy                                                          # tear it 
   the `cloudflare_*` resources and re-apply.
 
 **Passwords & hashes**
-- **TinyAuth `$2y$` bcrypt silently fails** — Go bcrypt accepts only `$2a$`/`$2b$`.
-  `htpasswd -bnBC 10 … | sed 's/\$2y\$/\$2a\$/'` (Step 3 does this).
+- **Authelia admin hash is argon2id** — generated with the authelia binary (Step 3),
+  not `htpasswd`; the old TinyAuth `$2y$`→`$2a$` bcrypt rewrite no longer applies.
 - **Router hash needs OpenSSL 3.x** — macOS LibreSSL has no `passwd -6`; use
   `$(brew --prefix openssl@3)/bin/openssl passwd -6`, or leave key-only (default).
 - **`$` in any secret gets eaten by docker compose interpolation** — the Ansible

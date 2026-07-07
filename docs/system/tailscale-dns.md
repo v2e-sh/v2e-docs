@@ -105,7 +105,7 @@ flowchart TB
       home["home<br/>(host tailscaled)<br/>advertise-exit-node<br/>kernel IP forwarding"]
       subgraph stack["mullvad-exit stack (Docker)"]
         gluetun["gluetun<br/>Mullvad WireGuard<br/>(userspace, own netns)<br/>kill-switch ON"]
-        ts["tailscale sidecar<br/>network_mode: service:gluetun<br/>TS_USERSPACE=false"]
+        ts["tailscale sidecar<br/>network_mode: service:gluetun<br/>TS_USERSPACE=true"]
       end
     end
 
@@ -138,9 +138,12 @@ the same infra node, enabled by adding `mullvad-exit` to `compose_stack_stacks`
 
 - **`gluetun`** (`qmcgaw/gluetun:v3.41.1`) holds a Mullvad WireGuard tunnel, owns
   its own network namespace, and enables IP forwarding inside that namespace. Its
-  kill-switch stays on: `FIREWALL_OUTBOUND_SUBNETS=100.64.0.0/10` permits only the
-  Tailscale CGNAT range out, so tailnet peers remain reachable but nothing leaks
-  if the tunnel drops.
+  kill-switch stays on without any `FIREWALL_OUTBOUND_SUBNETS` bypass (that env was
+  deliberately removed — setting it to `100.64.0.0/10` creates a policy route that
+  hijacks the forwarded exit return path). In netstack mode the sidecar's traffic
+  egresses as netns-local sockets that gluetun's firewall only permits out through
+  the VPN tunnel, so if Mullvad drops the exit fails closed rather than leaking via
+  eth0.
 - **`tailscale`** (`tailscale/tailscale:v1.98.4`) is a sidecar with
   `network_mode: service:gluetun`, sharing gluetun's namespace so all of its
   traffic (and any exit traffic it forwards) leaves through the Mullvad tunnel. It
@@ -184,12 +187,15 @@ on-host for the residential one.
 !!! warning "Two WireGuard modes — do not conflate them"
     - **gluetun's WireGuard** is userspace and in-namespace by design. That is the
       isolation described above.
-    - **The Tailscale sidecar** deliberately runs in kernel/TUN mode
-      (`TS_USERSPACE=false`), because exit-node packet forwarding requires the
-      kernel networking path. Modern Tailscale sets up its own exit-node SNAT, so
-      no masquerade sidecar is needed; the `mullvad-exit` README documents an
-      `iptables … MASQUERADE` or `FIREWALL=off` fallback if forwarded traffic does
-      not flow on first deploy.
+    - **The Tailscale sidecar** deliberately runs in userspace/netstack mode
+      (`TS_USERSPACE=true`). Kernel/TUN mode was tried first and fails against
+      gluetun on three fronts (split legacy/nft iptables backends, the
+      `FIREWALL_OUTBOUND_SUBNETS` policy route, and gluetun's VPN-table rule
+      outranking tailscaled's table 52 with strict rp_filter) — each blackholes the
+      exit. In netstack mode, exit traffic leaves tailscaled as ordinary sockets in
+      the shared netns and follows gluetun's own routing out the Mullvad tunnel, so
+      no forwarding sysctls, NET_ADMIN, or /dev/net/tun are needed on this
+      container.
 
 ## Split-DNS to Technitium
 
