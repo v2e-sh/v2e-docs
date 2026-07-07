@@ -45,5 +45,17 @@ the top not-`[done]` task, does it, and opens a PR.
 - [ ] **4. Docs domain-consistency sweep.** After task 1, grep all `docs/` + root markdown
   for stray real-domain leaks vs the placeholder convention; fix any in a follow-up PR.
 
+- [ ] **5. Remove AI/session-scaffolding docs (files only — keep history).** Strip the
+  process fingerprints so the repo reads as ordinary human work. **Plain `git rm`** — the
+  files REMAIN in git history; do **NOT** rewrite history or force-push (full scrub is a
+  separate supervised job). Remove: `HANDOVER.md`, `MASTER-PLAN.md`,
+  `RUNBOOK-DEVIATIONS-2026-07-01.md`. **KEEP** the product docs (`RUNBOOK.md`,
+  `CONFIGURATION.md`, `docs/system/*`, `docs/guides/*`, `docs/index.md`, `README.md`) and
+  `NIGHTLY-BACKLOG.md`; **LEAVE** `specs/`, `plans/`, `audits/`, `PRIVACY-ROADMAP.md`
+  untouched (later full-cleanup phase). Fix inbound links so the site stays valid — known
+  referrers: `CONFIGURATION.md` links to HANDOVER, the `mkdocs.yml` comment lists these,
+  and HANDOVER cross-links MASTER-PLAN/DEVIATIONS (going away with it). Acceptance:
+  `mkdocs build --strict` clean; PR only. Note in the PR that history scrubbing is deferred.
+
 <!-- Add new overnight-safe tasks below. Anything needing a converge, a decision, or a
      secret does NOT belong here — those stay operator-driven. -->
