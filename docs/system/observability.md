@@ -6,15 +6,15 @@ as one Docker Compose project (`v2e-compose/observability/`) and is sized to fit
 that node's constrained memory budget.
 
 Prometheus stores metrics, Loki stores logs, and Uptime Kuma runs external probes;
-Grafana visualises all three and evaluates alert rules. Two exporters (node-exporter,
-cAdvisor) plus Traefik's built-in metrics feed Prometheus, while Alloy tails every
-container's logs into Loki. Only Grafana and Uptime Kuma are published through Traefik;
-every other component is internal-only and reached through Grafana as a datasource
-proxy.
+Grafana visualises all three and evaluates alert rules. Three exporters (node-exporter,
+cAdvisor, blackbox-exporter) plus Traefik's and Authelia's built-in metrics feed
+Prometheus, while Alloy tails every container's logs into Loki. Grafana, Uptime Kuma,
+and ntfy are published through Traefik; every other component is internal-only and
+reached through Grafana as a datasource proxy.
 
 !!! note "Sizing and scope"
     The `services` node is a 4 GB VM, so every service carries an explicit `mem_limit`
-    and the project totals roughly 1.2 GiB. Alertmanager and Dozzle are deliberately
+    and the project totals roughly 1.5 GiB. Alertmanager and Dozzle are deliberately
     omitted: Grafana unified alerting and Uptime Kuma's own notifications cover alerting,
     and Arcane covers live container logs.
 
@@ -27,12 +27,14 @@ limits below are defined in `v2e-compose/observability/compose.yml`.
 | Service | Image | Role | `mem_limit` | Exposed via Traefik |
 |---|---|---|---|---|
 | Prometheus | `prom/prometheus:v3.13.0` | Metrics store and rule source | `288m` | No (proxied by Grafana) |
-| Grafana | `grafana/grafana:13.0.3` | Dashboards and unified alerting | `240m` | `grafana.${INTERNAL_DOMAIN}` |
+| Grafana | `grafana/grafana:13.0.3` | Dashboards and unified alerting | `512m` | `grafana.${INTERNAL_DOMAIN}` |
 | Loki | `grafana/loki:3.7.3` | Log store (single-binary) | `192m` | No |
 | Alloy | `grafana/alloy:v1.17.1` | Docker log shipper to Loki | `120m` | No |
 | Uptime Kuma | `louislam/uptime-kuma:2.4.0-slim` | Synthetic uptime probes | `140m` | `uptime.${INTERNAL_DOMAIN}` |
+| blackbox-exporter | `quay.io/prometheus/blackbox-exporter:v0.27.0` | Synthetic TLS/DNS/HTTP probes | `32m` | No |
 | node-exporter | `prom/node-exporter:v1.11.1` | Host metrics | `24m` | No (host network) |
 | cAdvisor | `ghcr.io/google/cadvisor:v0.60.3` | Per-container metrics | `200m` | No |
+| ntfy | `binwiederhier/ntfy:v2.25.0` | Push notifications for Grafana alerts | `64m` | `ntfy.${INTERNAL_DOMAIN}` |
 
 ## Architecture
 
@@ -79,8 +81,9 @@ mapping.
 
 ## Metrics
 
-Prometheus keeps a deliberately minimal scrape set, all targets on the `services` node.
-The jobs are defined in `config/prometheus.yml`.
+Prometheus scrapes eleven active jobs, all targets on the `services` node. Beyond the
+core resource metrics it also scrapes the log/metrics pipeline for its own health and a
+set of blackbox synthetic probes. The jobs are defined in `config/prometheus.yml`.
 
 | Job | Target | Coverage |
 |---|---|---|
@@ -88,6 +91,13 @@ The jobs are defined in `config/prometheus.yml`.
 | `node` | `host.docker.internal:9100` | Host CPU, memory, disk, network |
 | `cadvisor` | `cadvisor:8080` | Per-container resource usage |
 | `traefik` | `traefik:8082` | Reverse-proxy request and latency metrics |
+| `loki` | `loki:3100` | Log-store readiness and metrics |
+| `grafana` | `grafana:3000` | Grafana self-metrics |
+| `alloy` | `alloy:12345` | Log-shipper pipeline health |
+| `authelia` | `authelia:9959` | Auth-gate metrics |
+| `blackbox-cert` | `blackbox-exporter:9115` (probes `auth.int.v2e.sh`) | TLS wildcard cert expiry |
+| `blackbox-authportal` | `blackbox-exporter:9115` (probes `auth.int.v2e.sh/api/health`) | Auth portal end-to-end 200 |
+| `blackbox-dns` | `blackbox-exporter:9115` (probes `10.1.0.10`) | Internal DNS resolution |
 
 The scrape interval is 30s and rule evaluation runs every 60s. Retention is configured
 in the file rather than on the command line — Prometheus v3 deprecated the
@@ -144,9 +154,10 @@ providing a second, self-contained alerting path.
 
 ## Alerting
 
-Grafana ships one provisioned alert rule via `config/grafana-alerting.yaml`, in the
-folder and group `v2e`. It fires when any Prometheus scrape target has been down for
-five minutes.
+Grafana ships eight provisioned alert rules via `config/grafana-alerting.yaml`, all in
+the folder/group `v2e`: scrape target down, TLS cert expiring (<21d / <7d), internal
+DNS failing, disk low (<15%), host memory low (<10%), Authelia down, and auth portal
+not returning 200.
 
 | Field | Value |
 |---|---|
@@ -160,11 +171,11 @@ five minutes.
 The `or vector(0)` term keeps the series alive, reporting zero when everything is up, so
 the rule always has data to evaluate.
 
-!!! warning "No delivery channel is wired"
-    This rule evaluates but has no contact point or notification policy. Nothing is
-    emailed, pushed, or webhooked when it fires — an operator must open Grafana to see
-    the alert state. Wiring a notification channel is done in the Grafana UI; the rule
-    itself needs no channel to evaluate.
+!!! note "Alerts route to ntfy"
+    A provisioned ntfy contact point and a default notification policy route every alert:
+    Grafana POSTs its alert JSON via webhook to `http://ntfy:8080/v2e-alerts` over the
+    observability network. Operators subscribe to the `v2e-alerts` topic at
+    `https://ntfy.int.v2e.sh` (Authelia-gated) to receive them.
 
 ## Cross-node host metrics
 
@@ -212,7 +223,7 @@ Grafana's Traefik router carries only `secure-headers@docker` — it is gated by
 in-application, not by forward-auth (both together would double-gate the OIDC redirect). Uptime
 Kuma's router, by contrast, attaches `authelia@docker,secure-headers@docker`. All persisted
 state uses named volumes (`prometheus-data`, `grafana-data`,
-`loki-data`, `alloy-data`, `kuma-data`) rather than bind mounts, because the images run
+`loki-data`, `alloy-data`, `kuma-data`, `ntfy-data`) rather than bind mounts, because the images run
 as non-root uids — grafana `472`, prometheus `65534`, loki `10001` — that cannot write
 root-owned host directories.
 

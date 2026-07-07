@@ -52,7 +52,7 @@ promoted the builds (see RUNBOOK Step 1).
 
 | Variable | Default | Notes |
 |---|---|---|
-| `proxmox_insecure` | `true` | Accept PVE's self-signed API cert |
+| `proxmox_insecure` | `false` | Skip PVE API TLS verification; set `true` in tfvars for a self-signed cert (as this lab does) |
 | `proxmox_ssh_username` | `"root"` | User for the snippet upload over SSH |
 | `datastore_id` | `"local-lvm"` | VM disks |
 | `snippet_datastore_id` | `"local"` | Must have the `snippets` content type enabled |
@@ -110,7 +110,7 @@ router build (changes need a router `-replace`).
 |---|---|---|
 | `ansible_repo_url` | `https://github.com/v2e-sh/v2e-ansible` | Point at your fork if you changed group_vars (§3). Empty disables the bootstrap |
 | `ansible_repo_ref` | `""` | Branch/tag to deploy; empty = default branch |
-| `ansible_version` | `""` | Pin the pipx-installed Ansible; empty = latest (not reproducible — pin for prod) |
+| `ansible_version` | `"12.3.0"` | Pin the pipx-installed Ansible (default 12.3.0 → ansible-core 2.19.5); set empty for latest (not reproducible) |
 | `ansible_playbook` / `ansible_inventory` | `"site.yml"` / `"inventory/hosts.ini"` | Rarely changed |
 
 ### 1.9 SOPS shipping (set both or neither)
@@ -146,7 +146,14 @@ compose interpolation. Edit later with `sops secrets.sops.yaml`.
 | Key | Required | Generate / obtain | Consumed by |
 |---|---|---|---|
 | `cf_dns_api_token` | **Yes** | Cloudflare token, scopes *Zone:Read + DNS:Edit* on your zone only | Traefik ACME DNS-01 |
-| `tinyauth_auth_users` | **Yes** | `htpasswd -bnBC 10 user pass \| sed 's/\$2y\$/\$2a\$/'` — the `$2a$` rewrite is mandatory (Go bcrypt rejects `$2y$`). Comma-separate multiple `user:hash[:totp]` entries | TinyAuth login |
+| `authelia_session_secret` | **Yes** | `openssl rand -base64 48` | Authelia session encryption |
+| `authelia_storage_encryption_key` | **Yes** | `openssl rand -base64 48` | Authelia storage encryption |
+| `authelia_reset_password_jwt_secret` | **Yes** | `openssl rand -base64 48` | Authelia password-reset JWTs |
+| `authelia_oidc_hmac_secret` | **Yes** | `openssl rand -base64 48` | Authelia OIDC token HMAC |
+| `authelia_oidc_issuer_key` | **Yes** | RS256 private key PEM (`openssl genrsa 4096`) | Authelia OIDC token signing |
+| `authelia_admin_password_hash` | **Yes** | argon2id hash (`authelia crypto hash generate argon2`) | Authelia admin login |
+| `authelia_oidc_arcane_client_secret` / `_hash` | for arcane | `openssl rand -base64 32` + its pbkdf2 hash | Arcane OIDC (RP plaintext + Authelia-side hash) |
+| `authelia_oidc_grafana_client_secret` / `_hash` | for observability | `openssl rand -base64 32` + its pbkdf2 hash | Grafana OIDC (RP plaintext + Authelia-side hash) |
 | `semaphore_db_pass` | for semaphore | `openssl rand -base64 18` | Postgres + Semaphore |
 | `semaphore_admin_password` | for semaphore | `openssl rand -base64 15` | Semaphore UI admin (first boot) |
 | `semaphore_access_key_encryption` | for semaphore | `openssl rand -base64 32` — **rotating it invalidates every stored key/credential** | Semaphore key store |
@@ -157,12 +164,23 @@ compose interpolation. Edit later with `sops secrets.sops.yaml`.
 | `technitium_admin_password` | for infra DNS | `openssl rand -base64 15` | Technitium console `:5380` + zone API |
 | `tailscale_authkey` | for tailnet access | Tailscale admin console → *Settings → Keys* — mint a **reusable** key (an ephemeral one drops the node on reboot). Empty = the tailscale role skips with a warning | control + infra `tailscale up` |
 | `rustdesk_unattended_password` | for RustDesk | `openssl rand -base64 15` | Unattended access to the control desktop |
+| `vaultwarden_admin_token` | for vaultwarden | `openssl rand -base64 32` (or an argon2 hash) | Vaultwarden `/admin` panel token |
+| `mullvad_wireguard_private_key` / `_addresses` | for mullvad-exit | From your Mullvad WireGuard config | mullvad-exit stack (gluetun) |
 
 Copy-paste template (RUNBOOK Step 3 wraps this with generation + encryption):
 
 ```yaml
 cf_dns_api_token: "<scoped cloudflare token — Zone:Read + DNS:Edit>"
-tinyauth_auth_users: "<user:$2a$10$...>"
+authelia_session_secret: "<openssl rand -base64 48>"
+authelia_storage_encryption_key: "<openssl rand -base64 48>"
+authelia_reset_password_jwt_secret: "<openssl rand -base64 48>"
+authelia_oidc_hmac_secret: "<openssl rand -base64 48>"
+authelia_oidc_issuer_key: "<RS256 private key PEM — openssl genrsa 4096>"
+authelia_admin_password_hash: "<argon2id hash — authelia crypto hash generate argon2>"
+authelia_oidc_arcane_client_secret: "<openssl rand -base64 32>"
+authelia_oidc_arcane_client_secret_hash: "<pbkdf2 hash of the arcane secret>"
+authelia_oidc_grafana_client_secret: "<openssl rand -base64 32>"
+authelia_oidc_grafana_client_secret_hash: "<pbkdf2 hash of the grafana secret>"
 semaphore_db_pass: "<openssl rand -base64 18>"
 semaphore_admin_password: "<openssl rand -base64 15>"
 semaphore_access_key_encryption: "<openssl rand -base64 32>"
@@ -173,6 +191,9 @@ grafana_admin_password: "<openssl rand -base64 15>"
 technitium_admin_password: "<openssl rand -base64 15>"
 tailscale_authkey: "<reusable key from the Tailscale admin console, or empty>"
 rustdesk_unattended_password: "<openssl rand -base64 15>"
+vaultwarden_admin_token: "<openssl rand -base64 32>"
+mullvad_wireguard_private_key: "<from your Mullvad WireGuard config>"
+mullvad_wireguard_addresses: "<from your Mullvad WireGuard config>"
 ```
 
 Encrypt to **two** age recipients — control's key and an offline backup key
@@ -197,7 +218,7 @@ at it. Files live in `inventory/group_vars/`.
 | `compose_stack_internal_domain` | `"int.v2e.sh"` | Internal-only app domain (wildcard cert is issued for this) |
 | `compose_stack_acme_email` | `"admin@v2e.sh"` | Let's Encrypt account email — change this |
 | `compose_stack_cert_resolver` | `"production"` | `"staging"` while testing (LE rate limits are real) |
-| `compose_stack_stacks` | traefik, tinyauth, whoami, semaphore, arcane, observability | Which v2e-compose stacks deploy on services |
+| `compose_stack_stacks` | traefik, authelia, whoami, semaphore, arcane, observability, vaultwarden | Which v2e-compose stacks deploy on services |
 | `compose_stack_repo_url` / `compose_stack_dir` | v2e-compose.git / `/opt/v2e-compose` | Fork-and-point as with ansible |
 | `ssh_allow_users` | `"v2e ansible"` | sshd AllowUsers on this node |
 
@@ -205,8 +226,8 @@ at it. Files live in `inventory/group_vars/`.
 
 | Variable | Current value | Notes |
 |---|---|---|
-| `compose_stack_stacks` | technitium, rustdesk | Host-network stacks; `compose_stack_network: ""` skips the Traefik bridge |
-| `compose_stack_required_secrets` | `[technitium_admin_password]` | Per-group fail-fast assert (services keeps the traefik/tinyauth pair) |
+| `compose_stack_stacks` | technitium, rustdesk, mullvad-exit | Host-network stacks; `compose_stack_network: ""` skips the Traefik bridge |
+| `compose_stack_required_secrets` | `[technitium_admin_password, mullvad_wireguard_private_key, mullvad_wireguard_addresses, tailscale_authkey]` | Per-group fail-fast assert (services keeps the traefik + Authelia secrets) |
 | `infra_upstream_nameservers` | `[1.1.1.1, 9.9.9.9]` | Node resolv.conf **and** Technitium's forwarders (`technitium_forwarders` derives from it) |
 | `technitium_zone_name` | `"int.v2e.sh"` | The internal zone the API role creates |
 | `technitium_zone_wildcard_target` | `10.1.2.10` | Apex + `*.int.<domain>` → services/Traefik |
@@ -223,7 +244,7 @@ at it. Files live in `inventory/group_vars/`.
 | `control_desktop_disable_compositing` | `true` | Remote-desktop smoothness |
 | `control_desktop_nameservers` | `[10.1.0.10]` | Desktop browser resolves `int.<domain>` via Technitium |
 | `control_desktop_hosts_entries` | `{}` | Optional /etc/hosts shim (managed block; empty removes it) |
-| `rustdesk_client_version` / `_deb_sha256` | `""` / `""` | Pin the exact release; empty = install skipped with a warning |
+| `rustdesk_client_version` / `_deb_sha256` | `"1.4.8"` / `"c426f0a…7d5f547e"` | Pinned exact release; empty would skip the install with a warning |
 
 ### 3.4 Other committed group_vars
 
@@ -293,9 +314,8 @@ values.
 - **Manual by nature** (tailnet-side, no node API): approving control's advertised
   route and setting split-DNS `int.<domain>` → `10.1.0.10` in the Tailscale admin
   console.
-- **Values still to pin**: `rustdesk_client_version` + `.deb` sha256 (empty = the
-  role skips); a **reusable** `tailscale_authkey` (the SOPS key is present but
-  empty until minted); the live `/etc/hosts` shim entries (variable defaults to
-  empty — capture before enabling).
+- **Values still to pin**: a **reusable** `tailscale_authkey` (the SOPS key is
+  present but empty until minted); the live `/etc/hosts` shim entries (variable
+  defaults to empty — capture before enabling).
 - Live-lab throwaway credentials are recorded in `v2e-tf/.deploy-creds.txt` (local,
   gitignored) — rotate everything at real launch.

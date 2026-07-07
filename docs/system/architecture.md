@@ -76,8 +76,8 @@ given a virtio display) rather than a headless cloud image. Its roles:
 
 The Docker application estate, fronted by Traefik and Authelia SSO on `int.v2e.sh` with a
 production Let's Encrypt wildcard certificate. It runs the traefik, authelia, whoami,
-semaphore (with postgres), and arcane stacks, plus observability (prometheus, grafana,
-loki, alloy, uptime-kuma, node-exporter, cadvisor).
+semaphore (with postgres), arcane, and vaultwarden stacks, plus observability (prometheus, grafana,
+loki, alloy, uptime-kuma, blackbox-exporter, node-exporter, cadvisor, ntfy).
 
 ### agent (Debian, 313)
 
@@ -91,9 +91,10 @@ DNS to the configured resolvers, NTP, and the TCP ports in `agent_egress_allow_t
 A small infrastructure appliance on the otherwise-empty management VLAN (`100`), so
 foundational services live in their own failure domain, off the churnier services node. In
 Docker it runs Technitium — internal DNS authoritative for the `int.v2e.sh` zone,
-resolving the wildcard to the services node (`10.1.2.10`) — and the RustDesk relay
-(`hbbs`/`hbbr`). It is reachable from control for management, queried on `:53` by the lab,
-and keeps open egress for image and update pulls.
+resolving the wildcard to the services node (`10.1.2.10`) — the RustDesk relay
+(`hbbs`/`hbbr`), and a `mullvad-exit` stack (a namespace-isolated Mullvad WireGuard exit
+node). It also joins the tailnet as the `home` exit node. It is reachable from control for
+management, queried on `:53` by the lab, and keeps open egress for image and update pulls.
 
 ## Network topology
 
