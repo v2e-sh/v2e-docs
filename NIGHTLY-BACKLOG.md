@@ -21,7 +21,7 @@ the top not-`[done]` task, does it, and opens a PR.
 
 ## Queue
 
-- [ ] **1. Domain-generalize the user-facing docs.** `docs/guides/using-the-apps.md` and
+- [done #26] **1. Domain-generalize the user-facing docs.** `docs/guides/using-the-apps.md` and
   the "Using the installed apps" section of `RUNBOOK.md` hardcode this deployment's real
   domain (`int.v2e.sh`, `vault.int.v2e.sh`, `grafana.int.v2e.sh`, …). Replace with the
   `int.<your-domain>` placeholder convention the rest of the runbook already uses (see the
