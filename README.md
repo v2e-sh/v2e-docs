@@ -18,14 +18,6 @@ The rendered site is the best way to read these docs. This repository holds the 
 - **[Configuration reference](CONFIGURATION.md)** — every variable in one place:
   `terraform.tfvars`, SOPS secrets (with generation commands), Ansible `group_vars`,
   and template build config.
-- **Design specs** —
-  [VM templates](specs/2026-06-30-packer-templates-design.md) ·
-  [Traefik + TLS](specs/2026-06-30-compose-traefik-tls-design.md) ·
-  [Auth](specs/2026-06-30-compose-auth-design.md) ·
-  [DNS appliance](specs/2026-06-30-dns-appliance-design.md)
-- **[Audits](https://v2e-sh.github.io/v2e-docs/audits/AUDIT-2026-07-03/)** —
-  automated best-practice / official-documentation audit findings, each confirmed
-  against the code.
 
 ## The platform
 
