@@ -146,7 +146,7 @@ those consumed in `env.j2`.
 | `authelia_oidc_{arcane,grafana}_client_secret_hash` (pbkdf2, Authelia side), `authelia_oidc_{arcane,grafana}_client_secret` (plaintext, RP side) | |
 | `semaphore_db_pass`, `semaphore_admin_password`, `semaphore_access_key_encryption`, `semaphore_runner_reg_token` | |
 | `arcane_encryption_key`, `arcane_jwt_secret` | `cloudflare_api_token` + account / zone IDs (tunnel) |
-| `grafana_admin_password` | Proxmox connection, node sizing, and networking inputs |
+| `grafana_admin_password`, `grafana_discord_webhook_url` (critical-alert Discord fanout) | Proxmox connection, node sizing, and networking inputs |
 | `vaultwarden_admin_token` (Vaultwarden /admin panel token, services node) | |
 | `technitium_admin_password` | |
 | `mullvad_wireguard_private_key`, `mullvad_wireguard_addresses` | |
@@ -155,7 +155,10 @@ those consumed in `env.j2`.
 The per-host `compose_stack_required_secrets` list drives which keys the Ansible assert enforces: the
 services node requires `cf_dns_api_token`, the ten `authelia_*` keys (session/storage/JWT/HMAC
 scalars, the RS256 issuer key, the admin password hash, and the per-client secret hash+plaintext
-pairs), and `vaultwarden_admin_token` (the Vaultwarden /admin token) — see
+pairs), `vaultwarden_admin_token` (the Vaultwarden /admin token), plus the Semaphore (`semaphore_db_pass`,
+`semaphore_admin_password`, `semaphore_access_key_encryption`, `semaphore_runner_reg_token`), Arcane
+(`arcane_encryption_key`, `arcane_jwt_secret`), and Grafana (`grafana_admin_password`,
+`grafana_discord_webhook_url`) secrets — see
 `group_vars/services.yml`; the infra node requires
 `technitium_admin_password`, `mullvad_wireguard_private_key`, `mullvad_wireguard_addresses`, and
 `tailscale_authkey`.
