@@ -124,7 +124,8 @@ pipeline in `config/config.alloy` is intentionally simple.
 flowchart LR
   d[discovery.docker<br/>refresh 30s] --> r[discovery.relabel<br/>strip leading /]
   r --> s[loki.source.docker<br/>job=docker]
-  s --> w[loki.write<br/>http://loki:3100]
+  s --> p[loki.process scrub<br/>redact secrets]
+  p --> w[loki.write<br/>http://loki:3100]
 ```
 
 A relabel rule strips Docker's leading `/` from container names and writes the result to
@@ -138,11 +139,16 @@ and refuses older schemas. Retention is 14 days, enforced by the compactor with
 pins `GOMEMLIMIT` explicitly — 160 MiB for Loki, 100 MiB for Alloy — to force Go garbage
 collection before the OOM killer fires.
 
-!!! warning "Logs are shipped raw"
-    Alloy forwards container stdout and stderr verbatim; no relabel or redaction stage
-    masks secrets or PII before write. Anything an application logs — tokens, query
-    strings, credentials in error traces — lands in Loki as-is. Treat Loki as sensitive
-    and scrub at the source application.
+!!! note "Secrets are redacted in flight, not eliminated at the source"
+    Before every line reaches Loki, a `loki.process "scrub"` pipeline rewrites
+    credential-bearing text in place: an auth-scheme stage (`Bearer`/`Basic`/`Digest`
+    tokens) runs first, then a `key=value` stage covering `password`/`token`/`api_key`/
+    `client_secret`/etc. (case-insensitive), then a bare-Tailscale-key stage. The
+    auth-scheme stage must run before the key=value stage or the latter's bare-token
+    branch would redact only the scheme word and leak the token. This is defense in
+    depth, not a substitute for not logging secrets at the source — anything the
+    patterns don't recognize (unusual field names, secrets embedded mid-sentence) still
+    lands in Loki as-is, so treat Loki as sensitive regardless.
 
 ## Uptime Kuma
 
