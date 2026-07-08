@@ -161,6 +161,7 @@ compose interpolation. Edit later with `sops secrets.sops.yaml`.
 | `arcane_encryption_key` | for arcane | `openssl rand -base64 32` | Arcane data encryption |
 | `arcane_jwt_secret` | for arcane | `openssl rand -base64 32` | Arcane sessions |
 | `grafana_admin_password` | for observability | `openssl rand -base64 15` | Grafana `admin` login |
+| `grafana_discord_webhook_url` | for observability | Discord webhook URL | Grafana `critical-multi` backup alert channel |
 | `technitium_admin_password` | for infra DNS | `openssl rand -base64 15` | Technitium console `:5380` + zone API |
 | `tailscale_authkey` | for tailnet access | Tailscale admin console → *Settings → Keys* — mint a **reusable** key (an ephemeral one drops the node on reboot). Empty = the tailscale role skips with a warning | control + infra `tailscale up` |
 | `rustdesk_unattended_password` | for RustDesk | `openssl rand -base64 15` | Unattended access to the control desktop |
@@ -188,6 +189,7 @@ semaphore_runner_reg_token: "<openssl rand -base64 24>"
 arcane_encryption_key: "<openssl rand -base64 32>"
 arcane_jwt_secret: "<openssl rand -base64 32>"
 grafana_admin_password: "<openssl rand -base64 15>"
+grafana_discord_webhook_url: "<Discord webhook URL>"
 technitium_admin_password: "<openssl rand -base64 15>"
 tailscale_authkey: "<reusable key from the Tailscale admin console, or empty>"
 rustdesk_unattended_password: "<openssl rand -base64 15>"
@@ -200,8 +202,8 @@ Encrypt to **two** age recipients — control's key and an offline backup key
 (`sops --encrypt --age "<pub1>,<pub2>" secrets.yaml > secrets.sops.yaml`); under SOPS
 a lost private key loses every secret.
 
-Not in SOPS: **Arcane's login** seeds as `admin`/`password` on first boot — change it
-in the UI immediately (codifying it is security backlog H3).
+Not in SOPS: **Arcane's login** seeds as `arcane`/`arcane-admin` on first boot — change
+it in the UI immediately (codifying it is security backlog H3).
 
 ---
 
@@ -301,11 +303,13 @@ file; CLI overrides are ignored.
 ## 5. v2e-compose standalone (.env) — reference only
 
 In the deployed lab, Ansible renders each stack's `.env` from §2/§3 — there is
-nothing to configure in v2e-compose itself. For running a stack standalone (dev):
-`make bootstrap`, edit `.env` (`DOMAIN`, `INTERNAL_DOMAIN`, `ACME_EMAIL`,
-`CERT_RESOLVER`), put secrets in the repo-local `secrets.sops.yaml`, then `make up`
-(wraps `sops exec-env`). `make validate` type-checks every compose file with dummy
-values.
+nothing to configure in v2e-compose itself. For running the unauthenticated
+traefik + whoami front door standalone (dev only — `make` does not deploy
+Authelia or the rest of the app estate): `make bootstrap`, edit `.env` (`DOMAIN`,
+`INTERNAL_DOMAIN`, `ACME_EMAIL`, `CERT_RESOLVER`), put secrets in the repo-local
+`secrets.sops.yaml`, then `make up` (wraps `sops exec-env`). `make validate`
+type-checks `traefik/compose.yml` and `whoami/compose.yml` with dummy values —
+not the other stacks.
 
 ---
 

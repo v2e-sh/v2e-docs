@@ -177,11 +177,15 @@ not returning 200.
 The `or vector(0)` term keeps the series alive, reporting zero when everything is up, so
 the rule always has data to evaluate.
 
-!!! note "Alerts route to ntfy"
+!!! note "Alerts route to ntfy — critical alerts also fan out to Discord"
     A provisioned ntfy contact point and a default notification policy route every alert:
     Grafana POSTs its alert JSON via webhook to `http://ntfy:8080/v2e-alerts` over the
     observability network. Operators subscribe to the `v2e-alerts` topic at
-    `https://ntfy.int.v2e.sh` (Authelia-gated) to receive them.
+    `https://ntfy.int.v2e.sh` (Authelia-gated) to receive them. Alerts with `severity: critical`
+    (cert <7d, internal DNS down, Authelia down, auth portal down) additionally route through a
+    `critical-multi` contact point that also posts to a Discord webhook (`grafana_discord_webhook_url`
+    from SOPS), so the notification path doesn't depend solely on the same ntfy instance being
+    alerted about.
 
 ## Cross-node host metrics
 

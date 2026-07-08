@@ -51,8 +51,7 @@ get server-admin; there's also a break-glass local `admin` login if SSO is ever 
 ### Semaphore — ops automation
 Authelia gate, then Semaphore's **own** `admin` login. This is where you run maintenance
 playbooks (patch/upgrade, add a user, an estate health check) as click-to-run task
-templates, and where other people can add their own repository of playbooks. *(The starter
-templates are being wired up — see the DevOps-platform spec.)*
+templates, and where other people can add their own repository of playbooks.
 
 ### Arcane — container management
 Click **Sign in with OIDC Provider**. Gives you a view of every container on the services

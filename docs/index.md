@@ -7,7 +7,7 @@ hide:
 
 **v2e** is a single-host homelab defined entirely in code. Five VLAN-isolated
 virtual machines run on one Proxmox host, provisioned by OpenTofu and Ansible and
-serving a Docker application estate behind Traefik, TinyAuth, and Tailscale. This
+serving a Docker application estate behind Traefik, Authelia, and Tailscale. This
 site documents how the lab is built and how to operate it — and the **code in the
 [repositories](#the-repositories) is the source of truth** for every claim here.
 
@@ -57,7 +57,7 @@ behind a default-deny firewall:
 | :material-server: **Host** | One Proxmox VE host; five VMs — `router`, `control`, `services`, `agent`, `infra` |
 | :material-lan: **Network** | VLAN-segmented, default-deny VyOS firewall; one WAN DNAT to control's SSH |
 | :material-cog-transfer: **Provisioning** | OpenTofu builds the VMs and cloud-init; Ansible `site.yml` converges them — one unattended pass |
-| :material-docker: **Applications** | Docker estate behind Traefik + TinyAuth on `*.int.v2e.sh`, with a Let's Encrypt wildcard cert |
+| :material-docker: **Applications** | Docker estate behind Traefik + Authelia on `*.int.v2e.sh`, with a Let's Encrypt wildcard cert |
 | :material-vpn: **Mesh & DNS** | Tailscale mesh, residential and Mullvad exit nodes, split-DNS to a Technitium resolver |
 | :material-key-chain: **Secrets** | Everything sensitive lives in SOPS/age; a clean rebuild reproduces the estate from nothing |
 
@@ -90,7 +90,7 @@ independently versioned.
 
     ---
 
-    The Docker Compose stacks — Traefik, TinyAuth, the observability stack,
+    The Docker Compose stacks — Traefik, Authelia, the observability stack,
     Technitium DNS, the Mullvad exit, and the rest of the application estate.
 
 -   :material-package-variant-closed:{ .middle } &nbsp; __[v2e-templates](https://github.com/v2e-sh/v2e-templates)__

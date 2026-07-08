@@ -26,10 +26,11 @@ this runbook only walks the happy path.
 > identical on every deploy — shown literally. Anything else (`192.168.1.x`,
 > `example.com`) is a **placeholder** — swap in your real host / LAN / domain.
 
-**End state:** `https://whoami.int.<your-domain>` answers with a production Let's
-Encrypt wildcard cert, `https://grafana|semaphore|arcane|uptime|traefik.int.<domain>`
-sit behind Authelia SSO login (single sign-on / OIDC) — all reachable from the control node (and from your mac
-after the post-deploy access steps).
+**End state:** `https://whoami|grafana|semaphore|arcane|uptime|traefik.int.<your-domain>`
+answer with a production Let's Encrypt wildcard cert and sit behind Authelia SSO
+login (single sign-on / OIDC) — `whoami` is the SSO forward-auth canary app — all
+reachable from the control node (and from your mac after the post-deploy access
+steps).
 
 ## The whole deploy at a glance
 
@@ -220,7 +221,8 @@ One **age-encrypted** secrets file is shipped to control at first boot; cloud-in
 decrypts it and passes it to `ansible-playbook` as extra-vars, and the
 `compose_stack` role renders the values into each stack's `.env`. **Without it the
 app stack does not deploy** (Ansible asserts `cf_dns_api_token`, the `authelia_*`
-SSO secrets, and `vaultwarden_admin_token` are set).
+SSO secrets, `vaultwarden_admin_token`, and the rest of `compose_stack_required_secrets`
+— see `group_vars/services.yml` — are set).
 
 Everything below is copy-paste; the only value you must bring is the **DNS-01
 Cloudflare token** from Step 0. Key names are **lowercase** — that's what Ansible
@@ -234,6 +236,7 @@ TS_AUTHKEY=''                                  # Tailscale REUSABLE auth key (ad
                                                # Settings → Keys); empty = tailnet join skipped
 MULLVAD_WG_KEY=''                              # infra mullvad-exit only: WireGuard private key
 MULLVAD_WG_ADDRS=''                            # infra mullvad-exit only: WireGuard addresses
+DISCORD_WEBHOOK=''                             # Grafana backup alert channel (critical-multi contact point)
 
 # Authelia admin password + argon2id hash. Authelia stores an argon2id hash (not
 # bcrypt), so htpasswd no longer applies — the hash comes from the authelia binary.
@@ -290,6 +293,7 @@ semaphore_runner_reg_token: "$(openssl rand -base64 24)"
 arcane_encryption_key: "$(openssl rand -base64 32)"
 arcane_jwt_secret: "$(openssl rand -base64 32)"
 grafana_admin_password: "${GRAFANA_PW}"
+grafana_discord_webhook_url: "${DISCORD_WEBHOOK}"
 technitium_admin_password: "${TECHNITIUM_PW}"
 tailscale_authkey: "${TS_AUTHKEY}"
 rustdesk_unattended_password: "${RUSTDESK_PW}"
@@ -436,7 +440,8 @@ v2e@control:~$ sudo -iu ansible ssh services hostname             # automation m
 ```bash
 v2e@control:~$ ssh services docker ps --format '{{.Names}}\t{{.Status}}'
 # expect: traefik, authelia, whoami, semaphore(+postgres), arcane, vaultwarden,
-#         prometheus, grafana, loki, alloy, uptime-kuma, node-exporter, cadvisor — all Up (healthy)
+#         prometheus, grafana, loki, alloy, uptime-kuma, ntfy, node-exporter,
+#         cadvisor, blackbox-exporter — all Up (healthy)
 ```
 
 **4. The wildcard cert was issued** (DNS-01 — no inbound ports needed):
@@ -455,7 +460,7 @@ resolvers — see the DNS-01 note in Troubleshooting.
 ```bash
 v2e@control:~$ curl -s --resolve whoami.int.example.com:443:10.1.2.10 https://whoami.int.example.com | head -3
 v2e@control:~$ curl -sI --resolve grafana.int.example.com:443:10.1.2.10 https://grafana.int.example.com | head -1
-# whoami: plaintext request dump, valid cert (no -k needed) · grafana: redirect to Authelia
+# whoami + grafana: both redirect to Authelia (whoami is the SSO forward-auth canary); valid cert (no -k needed)
 ```
 
 **6. If you enabled SOPS-verify it decrypts on control:**
