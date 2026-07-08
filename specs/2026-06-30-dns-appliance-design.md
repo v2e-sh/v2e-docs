@@ -197,4 +197,3 @@ Resolved against the actual repo state before implementation. Three PRs land in 
 - Technitium DNS Server — native install + HTTP API + authoritative zones/forwarders/logging;
   footprint ~256–512 MB RAM. technitium.com / github.com/TechnitiumSoftware/DnsServer.
 - Topology from `v2e-tf/network.tf` (VLANs 100–103, nodes `.10`, services `10.1.2.10`).
-- MASTER-PLAN.md §5 (COMPOSE-2, ANS-4), §2 (Q1 egress, Q5 Tailscale scope), Appendix B (DNS-01).

@@ -309,7 +309,7 @@ values.
 
 ---
 
-## 6. Known gaps (tracked in HANDOVER.md §7)
+## 6. Known gaps
 
 - **Manual by nature** (tailnet-side, no node API): approving control's advertised
   route and setting split-DNS `int.<domain>` → `10.1.0.10` in the Tailscale admin

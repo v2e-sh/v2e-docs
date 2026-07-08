@@ -7,7 +7,7 @@
     authoritative reference is the [Application estate](../system/applications.md) page.
 
 **Date:** 2026-06-30
-**Phase:** COMPOSE-2 — see `MASTER-PLAN.md` §5
+**Phase:** COMPOSE-2
 **Branch:** `feat/compose-auth` · **Integration:** feature branch → **PR** (the `main` ruleset requires PRs)
 **Repo:** `v2e-compose` · **Depends on:** COMPOSE-1 (merged) · **Followed by:** COMPOSE-3 (Semaphore + Dockge)
 **Status:** design approved — implemented; **corrected post-review** (see banner).
@@ -198,7 +198,7 @@ whoami) with dummy env; `make validate` and the CI workflow both cover tinyauth.
 3. A second protected `*.v2e.sh` (or re-hitting the dashboard in a new tab) → **no** re-login
    (the `.v2e.sh` SSO cookie).
 
-**Acceptance (MASTER-PLAN §5):** a protected route prompts for auth and only passes valid
+**Acceptance:** a protected route prompts for auth and only passes valid
 users; unprotected routes unaffected.
 
 ---
@@ -231,4 +231,3 @@ on the (then-introduced) `backend` `internal: true` network. No auth rework need
 - TinyAuth v5 docs (getting-started + advanced), image `ghcr.io/steveiliop56/tinyauth:v5`,
   forward-auth address `http://tinyauth:3000/api/auth/traefik`, `TINYAUTH_APPURL` /
   `TINYAUTH_AUTH_USERS`, parent-domain SSO cookie — tinyauth.app/docs, github.com/tinyauthapp/tinyauth (verified 2026-06-30).
-- MASTER-PLAN.md §1 (Q3 TinyAuth), §5 (COMPOSE-2), §9 (decision log).

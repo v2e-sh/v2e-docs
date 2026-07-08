@@ -1,7 +1,7 @@
 # Phase 0/E — Packer Templates — Design Spec
 
 **Date:** 2026-06-30
-**Phase:** 0/E (Packer) — see `MASTER-PLAN.md` §5
+**Phase:** 0/E (Packer)
 **Branch:** `feat/packer-templates`
 **Repo:** `v2e-packer` (new) · **Upstream of:** TF-1
 **Status:** design approved — ready for implementation planning (writing-plans).

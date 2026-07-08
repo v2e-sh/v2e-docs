@@ -53,7 +53,7 @@
 
 - [ ] **Step 1: Confirm the branch**
 
-Run: `git -C /Users/alex/Documents/v2e-environment/v2e-compose branch --show-current`
+Run: `git -C ~/v2e-environment/v2e-compose branch --show-current`
 Expected: `feat/compose-internal-domain` (else `git checkout -b feat/compose-internal-domain`).
 
 - [ ] **Step 2: Extend `.env.example`**
@@ -77,13 +77,13 @@ CERT_RESOLVER=staging          # flip to `production` once staging issues cleanl
 
 - [ ] **Step 3: Verify**
 
-Run: `grep -nE 'INTERNAL_DOMAIN|DNS_ADMIN_ADDR' /Users/alex/Documents/v2e-environment/v2e-compose/.env.example`
+Run: `grep -nE 'INTERNAL_DOMAIN|DNS_ADMIN_ADDR' ~/v2e-environment/v2e-compose/.env.example`
 Expected: both present with the defaults above.
 
 - [ ] **Step 4: Commit**
 
 ```bash
-cd /Users/alex/Documents/v2e-environment/v2e-compose
+cd ~/v2e-environment/v2e-compose
 git add .env.example
 git commit -m "compose: add INTERNAL_DOMAIN + DNS_ADMIN_ADDR config"
 ```
@@ -140,7 +140,7 @@ Leave the ACME resolver lines (27–38, incl. the `1.1.1.1:53,1.0.0.1:53` pin) a
 
 Run:
 ```bash
-cd /Users/alex/Documents/v2e-environment/v2e-compose
+cd ~/v2e-environment/v2e-compose
 ruby -ryaml -e 'YAML.load_file("traefik/compose.yml"); puts "traefik/compose.yml parses"'
 ```
 Expected: `traefik/compose.yml parses`.
@@ -206,7 +206,7 @@ traefik/dynamic/
 
 Run:
 ```bash
-cd /Users/alex/Documents/v2e-environment/v2e-compose
+cd ~/v2e-environment/v2e-compose
 mkdir -p traefik/dynamic
 INTERNAL_DOMAIN=int.v2e.sh DNS_ADMIN_ADDR=10.1.0.53:5380 \
   envsubst '$INTERNAL_DOMAIN $DNS_ADMIN_ADDR' < traefik/dns.yml.tmpl > traefik/dynamic/dns.yml
@@ -263,7 +263,7 @@ Change line 11:
 
 Run:
 ```bash
-cd /Users/alex/Documents/v2e-environment/v2e-compose
+cd ~/v2e-environment/v2e-compose
 ruby -ryaml -e 'YAML.load_file("tinyauth/compose.yml"); YAML.load_file("whoami/compose.yml"); puts "ok"'
 grep -nE '\$\{INTERNAL_DOMAIN\}' tinyauth/compose.yml whoami/compose.yml
 ```
@@ -353,7 +353,7 @@ validate: dynamic
 
 Run:
 ```bash
-cd /Users/alex/Documents/v2e-environment/v2e-compose
+cd ~/v2e-environment/v2e-compose
 [ -f .env ] || cp .env.example .env
 make dynamic
 ruby -ryaml -e 'YAML.load_file("traefik/dynamic/dns.yml"); puts "rendered via make OK"'
@@ -406,7 +406,7 @@ Replace the `run:` block in the `compose` job with:
 
 Run:
 ```bash
-cd /Users/alex/Documents/v2e-environment/v2e-compose
+cd ~/v2e-environment/v2e-compose
 ruby -ryaml -e 'YAML.load_file(".github/workflows/ci.yml"); puts "ci.yml parses"'
 ```
 Expected: `ci.yml parses`.

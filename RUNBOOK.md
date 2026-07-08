@@ -456,8 +456,8 @@ resolvers — see the DNS-01 note in Troubleshooting.
 (Step 8), so pin the name to the services node with `--resolve`:
 
 ```bash
-v2e@control:~$ curl -s --resolve whoami.int.v2e.sh:443:10.1.2.10 https://whoami.int.v2e.sh | head -3
-v2e@control:~$ curl -sI --resolve grafana.int.v2e.sh:443:10.1.2.10 https://grafana.int.v2e.sh | head -1
+v2e@control:~$ curl -s --resolve whoami.int.example.com:443:10.1.2.10 https://whoami.int.example.com | head -3
+v2e@control:~$ curl -sI --resolve grafana.int.example.com:443:10.1.2.10 https://grafana.int.example.com | head -1
 # whoami: plaintext request dump, valid cert (no -k needed) · grafana: redirect to Authelia
 ```
 
@@ -488,13 +488,13 @@ v2e@control:~$ sudo -iu ansible sops -d ~/ansible/group_vars/all.sops.yaml | hea
 
 Once you're on the tailnet with split-DNS (Step 8), the apps are three steps away:
 
-1. **Reach them.** Everything is at `*.int.v2e.sh` (e.g. `https://grafana.int.v2e.sh`),
+1. **Reach them.** Everything is at `*.int.example.com` (e.g. `https://grafana.int.example.com`),
    resolvable only over Tailscale. If a name doesn't resolve, check you're not on an
-   exit node that shadows the split-DNS, or add `/etc/resolver/int.v2e.sh` (macOS).
-2. **Log in once at Authelia.** Any app bounces you to `auth.int.v2e.sh`; sign in as
+   exit node that shadows the split-DNS, or add `/etc/resolver/int.example.com` (macOS).
+2. **Log in once at Authelia.** Any app bounces you to `auth.int.example.com`; sign in as
    `admin`. That one session covers every SSO app — Grafana, Semaphore, Arcane, Traefik,
    Uptime Kuma, ntfy. (Grafana/Arcane show a "Sign in with Authelia/OIDC" button.)
-3. **The two non-SSO bits:** point the **Bitwarden** client at `https://vault.int.v2e.sh`
+3. **The two non-SSO bits:** point the **Bitwarden** client at `https://vault.int.example.com`
    for the password vault, and subscribe to the ntfy topic **`v2e-alerts`** for alerts.
 
 Full per-app guide (what each app is for, how to log in): **[Using the lab](guides/using-the-apps.md)**.
