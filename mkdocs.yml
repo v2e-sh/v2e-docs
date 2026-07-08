@@ -6,9 +6,9 @@ repo_name: v2e-sh/v2e-docs
 edit_uri: edit/main/
 
 # The real markdown lives at the repo root (cross-repo references depend on those
-# paths); docs/ is a symlink tree selecting the HUMAN-FACING pages only. Session/
-# planning artifacts (HANDOVER, MASTER-PLAN, deviations, plans/) are deliberately
-# not linked — they are not part of the site.
+# paths); docs/ is a symlink tree selecting the HUMAN-FACING pages only. Point-in-time
+# AI-generated artifacts (plans, design specs, audits, session scaffolding) are not
+# part of the site — they live in the agent brain, not this repo.
 
 nav:
   - Home: index.md
@@ -23,13 +23,6 @@ nav:
       - Secrets & SOPS flow: system/secrets.md
       - Deploy & bootstrap lifecycle: system/lifecycle.md
       - Observability & alerting: system/observability.md
-  - Design specs:
-      - VM templates: specs/2026-06-30-packer-templates-design.md
-      - Traefik + TLS: specs/2026-06-30-compose-traefik-tls-design.md
-      - Auth (TinyAuth): specs/2026-06-30-compose-auth-design.md
-      - DNS appliance: specs/2026-06-30-dns-appliance-design.md
-  - Audits:
-      - "2026-07-03": audits/AUDIT-2026-07-03.md
 
 theme:
   name: material

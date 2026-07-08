@@ -45,15 +45,6 @@ site documents how the lab is built and how to operate it — and the **code in 
 
     [:octicons-arrow-right-24: Look up a variable](CONFIGURATION.md)
 
--   :material-shield-search:{ .lg .middle } &nbsp; __Audits__
-
-    ---
-
-    Findings from the automated best-practice and official-documentation audit —
-    each confirmed against the code at `file:line`.
-
-    [:octicons-arrow-right-24: Read the latest audit](audits/AUDIT-2026-07-03.md)
-
 </div>
 
 ## At a glance
@@ -113,7 +104,7 @@ independently versioned.
 
     ---
 
-    This documentation site — the system reference, runbook, configuration
-    reference, design specs, and audit reports.
+    This documentation site — the system reference, runbook, and configuration
+    reference.
 
 </div>
